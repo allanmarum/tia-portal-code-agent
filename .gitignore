@@ -39,6 +39,10 @@ ScaffoldingReadMe.txt
 # dotenv environment variables file
 .env
 
+# Local configuration (generated from examples)
+config/appsettings.json
+config/opencode.json
+
 # Others
 ~$*
 *~

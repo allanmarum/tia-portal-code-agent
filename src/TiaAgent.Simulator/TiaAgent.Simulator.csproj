@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>TiaAgent.Simulator</RootNamespace>
+    <Description>In-memory ITiaProjectService implementation for development and testing</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PolySharp" Version="1.15.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TiaAgent.Application\TiaAgent.Application.csproj" />
+    <ProjectReference Include="..\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
+  </ItemGroup>
+</Project>

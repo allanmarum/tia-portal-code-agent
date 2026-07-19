@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>TiaAgent.Mcp</RootNamespace>
+    <Description>MCP tool handlers and registration for TIA Agent</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TiaAgent.Application\TiaAgent.Application.csproj" />
+    <ProjectReference Include="..\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
+  </ItemGroup>
+</Project>

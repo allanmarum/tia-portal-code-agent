@@ -1,0 +1,25 @@
+{
+  "tiaVersion": "V21",
+  "opennessVersion": "V21",
+  "capabilities": {
+    "captureSelection": true,
+    "listBlocks": true,
+    "readBlockSource": true,
+    "readBlockInterface": true,
+    "findReferences": true,
+    "compileSoftware": true,
+    "previewBlockChange": true,
+    "importBlock": false,
+    "hardwareWrites": false,
+    "safetyWrites": false,
+    "downloadToPlc": false
+  },
+  "limits": {
+    "maximumPageSize": 100,
+    "maximumHierarchyDepth": 5,
+    "maximumHierarchyNodes": 500,
+    "maximumBlockSourceBytes": 524288,
+    "maximumBlockReadsPerTask": 50,
+    "maximumResponsePayloadBytes": 1048576
+  }
+}

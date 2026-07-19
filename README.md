@@ -2,7 +2,7 @@
 
 An AI-powered engineering assistant integrated into Siemens TIA Portal through an Add-In, enabling contextual explanations, code review, dependency analysis, and controlled change proposals — all driven by a coding-agent runtime via the Model Context Protocol (MCP).
 
-> **Status:** Specification phase. No source code exists yet.
+> **Status:** Early implementation phase. Simulator and MCP tools are functional; Openness adapter is a placeholder.
 
 ## Table of Contents
 
@@ -178,18 +178,22 @@ Project content                                         — untrusted data bound
 tia-portal-code-agent/
 ├── AGENTS.md                      # Agent instruction file
 ├── README.md
+├── TiaAgent.sln                   # Solution file
+├── build.ps1                      # Build/test/pack orchestrator
 ├── src/
 │   ├── TiaAgent.AddIn/            # TIA Portal Add-In (UI, commands, bootstrap)
 │   ├── TiaAgent.Application/      # Business rules, validation, policies
-│   ├── TiaAgent.Openness/         # Single Openness adapter (ITiaProjectService)
+│   ├── TiaAgent.Openness/         # Single Openness adapter (placeholder)
 │   ├── TiaAgent.Contracts/        # DTOs, requests, responses, errors, events
-│   ├── TiaAgent.Mcp/              # MCP tool handlers and transport
+│   ├── TiaAgent.Mcp/              # MCP tool handlers and DI registration
+│   ├── TiaAgent.McpHost/          # Standalone MCP host process
+│   ├── TiaAgent.Simulator/        # In-memory ITiaProjectService for dev/test
 │   └── TiaAgent.OpenCode/         # Agent runtime client
 ├── tests/
 │   ├── TiaAgent.Application.Tests/
 │   ├── TiaAgent.Contracts.Tests/
 │   ├── TiaAgent.Mcp.Tests/
-│   ├── TiaAgent.OpenCode.Tests/
+│   ├── TiaAgent.ArchitectureTests/
 │   └── TiaAgent.IntegrationTests/
 ├── agents/                        # Agent profile definitions
 │   ├── tia-explain.md
@@ -197,10 +201,12 @@ tia-portal-code-agent/
 │   └── tia-change.md
 ├── config/
 │   ├── opencode.example.json
-│   └── appsettings.example.json
+│   ├── appsettings.example.json
+│   └── capabilities.example.json
+├── scripts/                       # Development and CI scripts
 └── docs/
     └── spec/                      # Authoritative specifications
-        ├── ARCHITECTURE.md        # Architecture contract (pt-BR)
+        ├── ARCHITECTURE.md        # Architecture contract (en-US)
         ├── ADDIN_TECHNICAL_SPEC.md # V21 Add-In baseline (English)
         ├── PRODUCT_SPEC.md        # Product scope and requirements
         ├── SECURITY_MODEL.md      # Trust boundaries and permissions

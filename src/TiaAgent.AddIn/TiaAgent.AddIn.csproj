@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>TiaAgent.AddIn</RootNamespace>
+    <Description>TIA Portal V21 Add-In — UI, commands, selection capture, OpenCode integration</Description>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TiaAgent.Application\TiaAgent.Application.csproj" />
+    <ProjectReference Include="..\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
+    <ProjectReference Include="..\TiaAgent.OpenCode\TiaAgent.OpenCode.csproj" />
+  </ItemGroup>
+
+  <!-- Siemens assemblies for Add-In providers -->
+  <ItemGroup Condition="'$(SiemensAssembliesExist)' == 'true'">
+    <Reference Include="Siemens.Engineering.Base">
+      <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.Base.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Siemens.Engineering.AddIn.Base">
+      <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.AddIn.Base.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Siemens.Engineering.AddIn.Step7">
+      <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.AddIn.Step7.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

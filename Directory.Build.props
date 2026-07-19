@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <TiaPortalVersion>V21</TiaPortalVersion>
+    <TiaPublicApiDir Condition="'$(TiaPublicApiDir)' == ''">$(ProgramFiles)\Siemens\Automation\Portal V21\PublicAPI\V21\net48</TiaPublicApiDir>
+    <Version>0.1.0</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <NoWarn>$(NoWarn);NU1603;CA1707</NoWarn>
+  </PropertyGroup>
+</Project>

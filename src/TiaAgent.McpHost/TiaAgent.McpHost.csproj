@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>TiaAgent.McpHost</RootNamespace>
+    <Description>External MCP Host process — standalone console app hosting the MCP server</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TiaAgent.Mcp\TiaAgent.Mcp.csproj" />
+    <ProjectReference Include="..\TiaAgent.Simulator\TiaAgent.Simulator.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>TiaAgent.ArchitectureTests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);NU1702</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2" />
+    <PackageReference Include="FluentAssertions" Version="7.2.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\TiaAgent.Application\TiaAgent.Application.csproj" />
+    <ProjectReference Include="..\..\src\TiaAgent.AddIn\TiaAgent.AddIn.csproj" />
+    <ProjectReference Include="..\..\src\TiaAgent.Simulator\TiaAgent.Simulator.csproj" />
+    <ProjectReference Include="..\..\src\TiaAgent.Mcp\TiaAgent.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\TiaAgent.OpenCode\TiaAgent.OpenCode.csproj" />
+  </ItemGroup>
+</Project>

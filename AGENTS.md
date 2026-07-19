@@ -28,7 +28,7 @@ OpenCode → MCP → Add-In (agent runtime, model access)
 
 Dependency direction is strict: AddIn → Application → Contracts; Openness → Application + Contracts; Contracts → no Siemens references.
 
-See `docs/spec/ARCHITECTURE.md` (Portuguese) and `docs/spec/ADDIN_TECHNICAL_SPEC.md` (English) for the full contract.
+See `docs/spec/ARCHITECTURE.md` (English) and `docs/spec/ADDIN_TECHNICAL_SPEC.md` (English) for the full contract.
 
 ## MCP tool conventions
 
@@ -45,7 +45,7 @@ Read snapshot → propose → preview → diff → user approval → validate to
 
 | File | Content |
 |---|---|
-| `docs/spec/ARCHITECTURE.md` | Architecture contract, dependency rules, tool catalog, flows (pt-BR) |
+| `docs/spec/ARCHITECTURE.md` | Architecture contract, dependency rules, tool catalog, flows (en-US) |
 | `docs/spec/ADDIN_TECHNICAL_SPEC.md` | V21 Add-In implementation baseline, packaging, installation (English) |
 | `docs/spec/PRODUCT_SPEC.md` | Product scope, use cases, MVP requirements |
 | `docs/spec/SECURITY_MODEL.md` | Trust boundaries, permissions, prompt injection defense |
