@@ -11,11 +11,14 @@ cd C:\github\tia-portal-code-agent
 .\build.ps1 all
 .\build.ps1 install
 
-# 2. Start MiMoCode agent server (port 43120)
+# 2. Start TiaAgent.Bridge (port 43119)
+dotnet run --project src/TiaAgent.Bridge --configuration Release
+
+# 3. Start MiMoCode agent server (port 43120)
 node C:\nvm4w\nodejs\node_modules\@mimo-ai\cli\bin\mimo serve --port 43120
 
-# 3. In TIA Portal: Options > Settings > Add-Ins > activate "TIA Portal Code Agent"
-# 4. Right-click a PLC block > AI Assistant > Explain selected object
+# 4. In TIA Portal: Options > Settings > Add-Ins > activate "TIA Portal Code Agent"
+# 5. Right-click a PLC block > AI Assistant > Explain selected object
 ```
 
 ## Prerequisites
@@ -46,7 +49,7 @@ cd C:\github\tia-portal-code-agent
 
 Expected output:
 - Build: 0 errors (warnings about Microsoft.Bcl.AsyncInterfaces version conflicts are OK)
-- Tests: 16 passed (4 Contracts + 9 Application + 3 Architecture)
+- Tests: 14 architecture tests passed
 - Pack: `artifacts\TiaAgent-0-1-0.addin` created
 
 ## Step 2: Install the Add-In
@@ -89,6 +92,9 @@ node C:\nvm4w\nodejs\node_modules\@mimo-ai\cli\bin\mimo serve --port 43120
 
 Verify it's running:
 ```powershell
+netstat -ano | Select-String ":43119"
+# Should show: TCP 127.0.0.1:43119 ... LISTENING
+
 netstat -ano | Select-String ":43120"
 # Should show: TCP 127.0.0.1:43120 ... LISTENING
 ```
@@ -148,25 +154,6 @@ The agent connects to MiMoCode on port 43120, which launches `tia-mcp` to read f
 
 ## Troubleshooting
 
-### "Could not load file or assembly 'System.Text.Json'"
-
-The `.addin` package is missing `System.Text.Json.dll`. Fix: rebuild and repack:
-
-```powershell
-.\build.ps1 clean
-.\build.ps1 all
-.\build.ps1 install
-```
-
-If it still fails, manually copy `System.Text.Json.dll` from:
-```
-src\TiaAgent.AddIn\bin\Release\net48\
-```
-to the Add-In installation folder:
-```
-%APPDATA%\Siemens\Automation\Portal V21\UserAddIns\
-```
-
 ### Add-In not showing in TIA Portal
 
 - Ensure TIA Portal was restarted after install
@@ -208,6 +195,7 @@ If the server is down, restart it (see Step 4).
 | Log | Path | Contents |
 |---|---|---|
 | Add-In log | `%LOCALAPPDATA%\TiaAgent\addin.log` | Action triggers, orchestrator calls, results |
+| Bridge log | `%LOCALAPPDATA%\TiaAgent\bridge.log` | Task lifecycle, OpenCode calls, errors |
 | Debug log | `%LOCALAPPDATA%\TiaAgent\debug.log` | Detailed errors, assembly binding failures |
 | Pending request | `%LOCALAPPDATA%\TiaAgent\pending_request.json` | Last triggered action (if OpenCode call failed) |
 
@@ -217,13 +205,13 @@ If the server is down, restart it (see Step 4).
 User right-clicks object in TIA Portal
     |
     v
-Add-In (TiaAgent.AddIn) -- captures selection, creates task
+Add-In (TiaAgent.AddIn) -- captures selection, creates BridgeTaskRequest
     |
-    v
-OpenCodeOrchestrator -- creates session, starts task
+    v (HTTP on port 43119)
+TiaAgent.Bridge -- task management, OpenCode session
     |
     v (HTTP on port 43120)
-MiMoCode / OpenCode -- AI agent runtime, model integration
+OpenCode/MiMoCode -- AI agent runtime, model integration
     |
     v (stdio, spawned as child process)
 tia-mcp (Czarnak/tia-portal-mcp) -- MCP server
