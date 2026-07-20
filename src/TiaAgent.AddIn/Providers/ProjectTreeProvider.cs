@@ -24,17 +24,15 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
 
     protected override void BuildContextMenuItems(ContextMenuAddInRoot addInRoot)
     {
-        var aiSubmenu = addInRoot.Items.AddSubmenu("AI Assistant");
-
-        aiSubmenu.Items.AddActionItem<IEngineeringObject>(
+        addInRoot.Items.AddActionItem<IEngineeringObject>(
             "Explain selected object",
             (MenuSelectionProvider<IEngineeringObject> selection) => { });
 
-        aiSubmenu.Items.AddActionItem<IEngineeringObject>(
+        addInRoot.Items.AddActionItem<IEngineeringObject>(
             "Review selected object",
             (MenuSelectionProvider<IEngineeringObject> selection) => { });
 
-        aiSubmenu.Items.AddActionItem<IEngineeringObject>(
+        addInRoot.Items.AddActionItem<IEngineeringObject>(
             "Propose change",
             (MenuSelectionProvider<IEngineeringObject> selection) => { });
     }
