@@ -27,31 +27,6 @@
     <AssemblyInfo>
       <Assembly>TiaAgent.OpenCode.dll</Assembly>
     </AssemblyInfo>
-    <!-- Transitive NuGet dependencies -->
-    <AssemblyInfo>
-      <Assembly>Microsoft.Extensions.Logging.Abstractions.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>Microsoft.Extensions.DependencyInjection.Abstractions.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>Microsoft.Bcl.AsyncInterfaces.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>System.Buffers.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>System.Memory.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>System.Numerics.Vectors.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>System.Runtime.CompilerServices.Unsafe.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>System.Threading.Tasks.Extensions.dll</Assembly>
-    </AssemblyInfo>
   </AdditionalAssemblies>
 
   <RequiredPermissions>

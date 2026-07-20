@@ -1,11 +1,10 @@
 #if SIEMENS
 using System;
 using System.Net.Http;
-using Microsoft.Extensions.Logging;
+using TiaAgent.Contracts.Abstractions;
 using TiaAgent.AddIn.Diagnostics;
 using TiaAgent.Application.Common;
 using TiaAgent.Application.OpenCode;
-using TiaAgent.Contracts.Abstractions;
 using TiaAgent.OpenCode.Client;
 
 namespace TiaAgent.AddIn;
@@ -93,26 +92,10 @@ public static class AddInServices
     /// </summary>
     private sealed class AddInLoggerAdapter<T> : ILogger<T>
     {
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            var message = formatter(state, exception);
-            switch (logLevel)
-            {
-                case LogLevel.Error:
-                case LogLevel.Critical:
-                    AddInLogger.Error(message, exception);
-                    break;
-                case LogLevel.Warning:
-                    AddInLogger.Warn(message);
-                    break;
-                default:
-                    AddInLogger.Info(message);
-                    break;
-            }
-        }
+        public void LogInfo(string message) => AddInLogger.Info(message);
+        public void LogWarning(string message) => AddInLogger.Warn(message);
+        public void LogError(string message, Exception? exception = null) => AddInLogger.Error(message, exception);
+        public void LogDebug(string message) => AddInLogger.Info(message);
     }
 }
 #endif

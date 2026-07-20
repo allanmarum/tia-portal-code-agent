@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using TiaAgent.Contracts.Abstractions;
 using TiaAgent.Contracts.Errors;
 
@@ -35,7 +34,7 @@ public class OpenCodeOrchestrator : IOpenCodeOrchestrator
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "OpenCode health check failed");
+            _logger.LogWarning($"OpenCode health check failed: {ex.Message}");
             return false;
         }
     }
@@ -47,9 +46,7 @@ public class OpenCodeOrchestrator : IOpenCodeOrchestrator
         var startTime = _clock.UtcNow;
         var toolCalls = new List<ToolCallRecord>();
 
-        _logger.LogInformation(
-            "Starting OpenCode task {Action} (correlationId={CorrelationId})",
-            descriptor.Action, descriptor.CorrelationId);
+        _logger.LogInfo($"Starting OpenCode task {descriptor.Action} (correlationId={descriptor.CorrelationId})");
 
         // Step 1: Check OpenCode availability
         var isAvailable = await IsOpenCodeAvailableAsync(cancellationToken);
@@ -68,7 +65,7 @@ public class OpenCodeOrchestrator : IOpenCodeOrchestrator
         try
         {
             // Step 2: Create session
-            _logger.LogDebug("Creating OpenCode session (correlationId={CorrelationId})", descriptor.CorrelationId);
+            _logger.LogDebug($"Creating OpenCode session (correlationId={descriptor.CorrelationId})");
             var session = await _client.CreateSessionAsync(
                 new CreateOpenCodeSessionRequest
                 {
@@ -80,7 +77,7 @@ public class OpenCodeOrchestrator : IOpenCodeOrchestrator
                 cancellationToken);
 
             // Step 3: Start task
-            _logger.LogDebug("Starting OpenCode task in session {SessionId}", session.SessionId);
+            _logger.LogDebug($"Starting OpenCode task in session {session.SessionId}");
             var task = await _client.StartTaskAsync(
                 new StartOpenCodeTaskRequest
                 {
@@ -93,16 +90,14 @@ public class OpenCodeOrchestrator : IOpenCodeOrchestrator
                 cancellationToken);
 
             // Step 4: Watch events and collect result
-            _logger.LogDebug("Watching events for task {TaskId}", task.TaskId);
+            _logger.LogDebug($"Watching events for task {task.TaskId}");
             string? finalResponse = null;
             var completed = false;
 
             var events = await _client.GetTaskEventsAsync(task.TaskId, cancellationToken);
             foreach (var evt in events)
             {
-                _logger.LogDebug(
-                    "Event: {EventType} - {Message} (task={TaskId})",
-                    evt.EventType, evt.Message, evt.TaskId);
+                _logger.LogDebug($"Event: {evt.EventType} - {evt.Message} (task={evt.TaskId})");
 
                 switch (evt.EventType)
                 {
@@ -168,7 +163,7 @@ public class OpenCodeOrchestrator : IOpenCodeOrchestrator
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("OpenCode task cancelled (correlationId={CorrelationId})", descriptor.CorrelationId);
+            _logger.LogWarning($"OpenCode task cancelled (correlationId={descriptor.CorrelationId})");
             return new OpenCodeOrchestratorResult
             {
                 Success = false,
@@ -180,7 +175,7 @@ public class OpenCodeOrchestrator : IOpenCodeOrchestrator
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "OpenCode task failed (correlationId={CorrelationId})", descriptor.CorrelationId);
+            _logger.LogError($"OpenCode task failed (correlationId={descriptor.CorrelationId})", ex);
             return new OpenCodeOrchestratorResult
             {
                 Success = false,
