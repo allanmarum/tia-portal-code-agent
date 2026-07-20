@@ -97,7 +97,8 @@ public class OpenCodeOrchestrator : IOpenCodeOrchestrator
             string? finalResponse = null;
             var completed = false;
 
-            await foreach (var evt in _client.WatchTaskAsync(task.TaskId, cancellationToken))
+            var events = await _client.GetTaskEventsAsync(task.TaskId, cancellationToken);
+            foreach (var evt in events)
             {
                 _logger.LogDebug(
                     "Event: {EventType} - {Message} (task={TaskId})",

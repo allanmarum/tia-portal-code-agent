@@ -150,7 +150,7 @@ function Invoke-Pack {
     $publisher = "C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe"
 
     # Clean
-    Write-Step 1 6 "Cleaning previous packages..."
+    Write-Step 1 4 "Cleaning previous packages..."
     if (Test-Path $addinFile) { Remove-Item $addinFile -Force }
     if (-not (Test-Path $packDir)) { New-Item -ItemType Directory -Path $packDir -Force | Out-Null }
     Write-Ok "Clean"
@@ -165,7 +165,7 @@ function Invoke-Pack {
     Copy-Item $configXml "$addinBin\Config.xml" -Force
 
     # Step 2: Run Siemens Publisher
-    Write-Step 2 6 "Running Siemens Publisher..."
+    Write-Step 2 4 "Running Siemens Publisher..."
     if (-not (Test-Path $publisher)) {
         Write-Fail "Publisher not found: $publisher"
         exit 1
@@ -174,63 +174,8 @@ function Invoke-Pack {
     if ($LASTEXITCODE -ne 0) { Write-Fail "Publisher failed"; exit 1 }
     Write-Ok "Publisher created base package"
 
-    # Step 3: Inject transitive NuGet dependencies
-    Write-Step 3 6 "Injecting transitive dependencies..."
-    $transitiveDeps = @(
-        "System.Text.Json.dll",
-        "System.Text.Encodings.Web.dll",
-        "System.Buffers.dll",
-        "System.Memory.dll",
-        "System.Runtime.CompilerServices.Unsafe.dll",
-        "Microsoft.Bcl.AsyncInterfaces.dll",
-        "System.Threading.Tasks.Extensions.dll",
-        "System.Numerics.Vectors.dll",
-        "Microsoft.Extensions.DependencyInjection.Abstractions.dll",
-        "Microsoft.Extensions.Logging.Abstractions.dll"
-    )
-    $searchDirs = @(
-        $addinBin,
-        "$Root\src\TiaAgent.Contracts\bin\$Config\netstandard2.0",
-        "$Root\src\TiaAgent.Application\bin\$Config\netstandard2.0",
-        "$Root\src\TiaAgent.OpenCode\bin\$Config\netstandard2.0"
-    )
-    $pkg = [System.IO.Packaging.Package]::Open($addinFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite)
-    $injected = 0
-    foreach ($dep in $transitiveDeps) {
-        $depPath = $null
-        foreach ($dir in $searchDirs) {
-            $candidate = Join-Path $dir $dep
-            if (Test-Path $candidate) { $depPath = $candidate; break }
-        }
-        if ($depPath) {
-            $bytes = [System.IO.File]::ReadAllBytes($depPath)
-            $depAsmName = [System.Reflection.AssemblyName]::GetAssemblyName($depPath)
-            $name = $depAsmName.Name.ToUpper()
-            $ver = $depAsmName.Version.ToString()
-            $pkt = "NULL"
-            $pktBytes = $depAsmName.GetPublicKeyToken()
-            if ($pktBytes -and $pktBytes.Length -gt 0) {
-                $pkt = ($pktBytes | ForEach-Object { $_.ToString("x2") }) -join ""
-            }
-            $uri = "/LocalAssemblyCache/$name,%20VERSION=$ver,%20CULTURE=NEUTRAL,%20PUBLICKEYTOKEN=$pkt,%20PROCESSORARCHITECTURE=MSIL"
-            try {
-                $part = $pkg.CreatePart([System.Uri]::new($uri, [System.UriKind]::Relative), "application/octet-stream")
-                $stream = $part.GetStream()
-                $stream.Write($bytes, 0, $bytes.Length)
-                $stream.Close()
-                $injected++
-            } catch {
-                Write-Warn "Skipped (exists): $dep"
-            }
-        } else {
-            Write-Warn "Not found: $dep"
-        }
-    }
-    $pkg.Close()
-    Write-Ok "Injected $injected transitive dependencies"
-
-    # Step 4: Sign the package
-    Write-Step 4 6 "Signing package..."
+    # Step 3: Sign the package
+    Write-Step 3 4 "Signing package..."
     $signerExe = "$Root\tools\OpcSigner\bin\$Config\net48\OpcSigner.exe"
     if (Test-Path $signerExe) {
         & $signerExe $addinFile 2>&1 | ForEach-Object { Write-Info $_ }
@@ -239,8 +184,8 @@ function Invoke-Pack {
         Write-Info "OpcSigner not found -- package will be unsigned"
     }
 
-    # Step 5: Verify
-    Write-Step 5 6 "Verifying package..."
+    # Step 4: Verify
+    Write-Step 4 4 "Verifying package..."
     $pkg = [System.IO.Packaging.Package]::Open($addinFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
     $partCount = 0
     $hasFeature = $false
@@ -254,7 +199,7 @@ function Invoke-Pack {
     Write-Ok "Total parts: $partCount"
 
     # Summary
-    Write-Step 6 6 "Package summary..."
+    Write-Step 4 4 "Package summary"
     $size = (Get-Item $addinFile).Length / 1KB
     Write-Info "File: $addinFile"
     Write-Info "Size: $([math]::Round($size, 1)) KB"

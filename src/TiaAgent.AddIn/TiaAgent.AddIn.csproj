@@ -48,4 +48,6 @@
     <Reference Include="WindowsBase" />
     <Reference Include="System.Xaml" />
   </ItemGroup>
+
+  <Import Project="PackageAddIn.targets" />
 </Project>
