@@ -1,11 +1,15 @@
 #if SIEMENS
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using Siemens.Engineering;
 using Siemens.Engineering.AddIn;
 using Siemens.Engineering.AddIn.Menu;
 using TiaAgent.AddIn.Diagnostics;
+using TiaAgent.AddIn.Ui;
+using TiaAgent.Contracts.Abstractions;
 
 namespace TiaAgent.AddIn.Providers;
 
@@ -30,9 +34,6 @@ public sealed class ProjectTreeProvider : ProjectTreeAddInProvider
 public sealed class TiaAgentContextMenu : ContextMenuAddIn
 {
     private readonly TiaPortal _tiaPortal;
-    private static readonly string LogDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "TiaAgent");
 
     public TiaAgentContextMenu(TiaPortal tiaPortal) : base("AI Assistant")
     {
@@ -76,21 +77,12 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
             var objName = selectedObj.ToString() ?? "Unknown";
             var objType = selectedObj.GetType().Name;
 
-            EnsureLogDir();
-            var requestFile = Path.Combine(LogDir, "pending_request.json");
-            var request = "{\"action\":\"" + action + "\",\"object\":\"" + objName + "\",\"type\":\"" + objType + "\"}";
-            File.WriteAllText(requestFile, request);
+            AddInLogger.Info($"Action '{action}' on {objName} ({objType})");
 
-            var msg = "TIA Agent - " + action.ToUpper() + "\n\n"
-                    + "Object: " + objName + "\n"
-                    + "Type: " + objType + "\n\n"
-                    + "To get AI analysis, run in PowerShell:\n"
-                    + "  .\\scripts\\run-mcp.ps1\n\n"
-                    + "The result will appear in:\n"
-                    + "  " + Path.Combine(LogDir, "last_result.txt");
-
-            MessageBox.Show(msg, "TIA Agent - " + action, MessageBoxButton.OK, MessageBoxImage.Information);
-            AddInLogger.Info($"Action '{action}' completed for {objName}");
+            // Fire-and-forget: run orchestrator on background thread
+            // TIA Portal menu callbacks must return quickly
+            var correlationId = $"tia-{Guid.NewGuid():N}";
+            Task.Run(() => ExecuteViaOrchestratorAsync(action, objName, objType, correlationId));
         }
         catch (Exception ex)
         {
@@ -99,9 +91,63 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
         }
     }
 
-    private void EnsureLogDir()
+    private async Task ExecuteViaOrchestratorAsync(string action, string objName, string objType, string correlationId)
     {
-        try { if (!Directory.Exists(LogDir)) Directory.CreateDirectory(LogDir); } catch { }
+        try
+        {
+            var agentId = action switch
+            {
+                "explain" => "tia-explain",
+                "review" => "tia-review",
+                "propose" => "tia-change",
+                _ => "tia-explain"
+            };
+
+            var actionDescription = action switch
+            {
+                "explain" => "explain this object",
+                "review" => "review this object for issues and improvements",
+                "propose" => "propose improvements to this object",
+                _ => "analyze this object"
+            };
+
+            var descriptor = new OpenCodeTaskDescriptor
+            {
+                Action = action,
+                CorrelationId = correlationId,
+                TiaSessionId = "addin-session",
+                ProjectId = "current",
+                AgentId = agentId,
+                Message = $"The user selected object \"{objName}\" of type \"{objType}\" in TIA Portal. Please {actionDescription}.",
+                SelectedObject = new SelectedObjectMetadata
+                {
+                    Id = objName,
+                    Name = objName,
+                    ObjectType = objType
+                }
+            };
+
+            AddInLogger.Info($"Calling orchestrator for '{action}' on {objName} (correlationId={correlationId})");
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            var result = await AddInServices.Orchestrator.ExecuteTaskAsync(descriptor, cts.Token);
+
+            if (result.Success)
+            {
+                AddInLogger.Info($"Orchestrator completed for '{action}' on {objName} ({result.Duration.TotalSeconds:F1}s, {result.ToolCalls.Count} tool calls)");
+                AssistantPanelFactory.ShowResult(action, result.Response ?? "No response received.");
+            }
+            else
+            {
+                AddInLogger.Warn($"Orchestrator failed for '{action}' on {objName}: {result.Error}");
+                AssistantPanelFactory.ShowError(result.Error ?? "Unknown error occurred.");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddInLogger.Error($"Orchestrator execution failed for '{action}'", ex);
+            AssistantPanelFactory.ShowError("Failed to communicate with AI assistant: " + ex.Message);
+        }
     }
 }
 
@@ -136,6 +182,7 @@ public sealed class TiaAgentTestContextMenu : ContextMenuAddIn
                             + "Process:   " + pid + "\n\n"
                             + "The Add-In is correctly installed and operational.\n"
                             + "Context menu actions are responding.\n\n"
+                            + "MCP Server: Czarnak/tia-portal-mcp (via stdio)\n"
                             + "Log: " + Path.Combine(
                                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                                 "TiaAgent", "addin.log");

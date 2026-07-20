@@ -5,30 +5,33 @@
 ```text
 TIA Portal Add-In (UI, commands, selection capture)
   ↓ HTTP (127.0.0.1:43120)
-OpenCode Agent Runtime (model interaction, tool-calling loop)
-  ↓ MCP over HTTP (127.0.0.1:43121/mcp)
-TIA MCP Server (tia_* tool handlers)
-  ↓ delegates to
-ITiaProjectService (single Openness adapter)
-  ↓
-TIA Portal Openness SDK
+OpenCode/MiMoCode Agent Runtime (model interaction, tool-calling loop)
+  ↓ stdio (MCP protocol)
+Czarnak's tia-mcp (.NET 8 MCP server)
+  ↓ stdin/stdout JSON IPC
+OpennessWorker (.NET 4.8)
+  ↓ TIA Portal Openness API
+TIA Portal V21
 ```
 
 ### Data Flow (Explain Selected Object)
 
 ```text
-1. User selects FB_Conveyor in TIA Portal project tree
-2. User clicks: AI Assistant → Explain selected object
-3. Add-In captures selection snapshot (immutable)
-4. Add-In generates selection token (sel-xxx)
-5. Add-In sends task to OpenCode with selection metadata
-6. OpenCode calls tia_get_current_selection(sel-xxx) via MCP
-7. MCP handler resolves selection token → returns snapshot
-8. OpenCode calls tia_read_block(objectId) via MCP
-9. MCP handler delegates to ITiaProjectService → returns block source
-10. OpenCode generates explanation using the model
-11. OpenCode returns final response to Add-In
-12. Add-In displays explanation in TIA Portal UI
+1.  User selects FB_Conveyor in TIA Portal project tree
+2.  User clicks: AI Assistant → Explain selected object
+3.  Add-In captures object name ("FB_Conveyor") and type ("PlcBlock")
+4.  Add-In calls OpenCodeOrchestrator.ExecuteTaskAsync with message:
+    "The user selected object 'FB_Conveyor' of type 'PlcBlock'. Please explain."
+5.  Orchestrator creates OpenCode session and starts task
+6.  OpenCode spawns tia-mcp via stdio (MCP transport)
+7.  Agent calls execute_read_batch with browse_project_tree
+8.  tia-mcp returns project tree (agent discovers block path)
+9.  Agent calls execute_read_batch with get_block_content
+10. tia-mcp exports block content via OpennessWorker
+11. Agent generates explanation using the model
+12. OpenCode returns final response via SSE
+13. Orchestrator collects response
+14. Add-In displays explanation in TIA Portal UI (MessageBox)
 ```
 
 ## Configuration
@@ -37,173 +40,113 @@ TIA Portal Openness SDK
 
 ```json
 {
+  "$schema": "https://opencode.ai/config.json",
   "server": {
-    "url": "http://127.0.0.1:43120",
     "port": 43120
   },
   "mcp": {
-    "servers": {
-      "tia-agent": {
-        "url": "http://127.0.0.1:43121/mcp",
-        "transport": "streamable-http"
-      }
+    "tia-portal": {
+      "type": "local",
+      "command": ["tia-mcp"],
+      "enabled": true
     }
   },
   "agents": {
     "default": "tia-explain",
     "available": ["tia-explain", "tia-review", "tia-change"]
+  },
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o"
   }
 }
 ```
 
-### MCP Server Configuration (`config/appsettings.json`)
+### MCP Server (Czarnak/tia-portal-mcp)
 
-```json
-{
-  "TiaAgent": {
-    "Mode": "Simulator",
-    "Mcp": {
-      "Enabled": true,
-      "Host": "127.0.0.1",
-      "Port": 43121,
-      "RequireAuthentication": true,
-      "RequestTimeoutSeconds": 30
-    },
-    "OpenCode": {
-      "Mode": "External",
-      "BaseUrl": "http://127.0.0.1:43120",
-      "DefaultAgent": "tia-explain",
-      "StartupTimeoutSeconds": 20
-    }
-  }
-}
-```
+Install: `dotnet tool install -g TiaMcpServer`
+Validate: `tia-mcp doctor`
 
-## MCP Tools
+The MCP server is spawned automatically by OpenCode via stdio transport. No separate process management needed.
 
-### Diagnostic Tools
+## MCP Tools (Czarnak/tia-portal-mcp)
 
-| Tool | Description | Risk |
+### Batch Read Tools
+
+| Tool | Description |
+|---|---|
+| `execute_read_batch` | Run up to 50 read operations in one call |
+
+Read operations: `browse_project_tree`, `get_block_content`, `list_tag_tables`, `read_hardware_config`, `read_cross_references`, `search_equipment_catalog`, `compile_check`, `get_project_status`
+
+### Batch Write Tools
+
+| Tool | Description |
+|---|---|
+| `preview_write_batch` | Preview writes, returns `safetyToken` |
+| `apply_write_batch` | Apply previewed writes with `safetyToken` |
+
+### Project Lifecycle Tools
+
+| Tool | Description |
+|---|---|
+| `get_project_status` | Project metadata |
+| `open_project` | Open and bind to a project |
+| `save_project` | Save the active project |
+| `save_project_as` | Save to a copy directory |
+| `close_project` | Close the project |
+| `archive_project` | Archive the project |
+| `create_project` | Create a new project |
+
+## Agent Profiles
+
+| Profile | File | Allowed Tools |
 |---|---|---|
-| `tia_ping` | Validates MCP server connectivity and TIA project status | R0 |
-
-### Context Tools
-
-| Tool | Description | Risk |
-|---|---|---|
-| `tia_get_current_context` | Returns TIA Portal session context | R0 |
-| `tia_get_current_selection` | Returns selection snapshot by token | R0 |
-
-### Read Tools
-
-| Tool | Description | Risk |
-|---|---|---|
-| `tia_list_blocks` | Lists PLC blocks with optional filters | R0 |
-| `tia_read_block` | Reads block source code and interface | R0 |
-| `tia_get_block_interface` | Returns block interface definition | R0 |
-
-### Reference Tools
-
-| Tool | Description | Risk |
-|---|---|---|
-| `tia_get_call_hierarchy` | Returns call hierarchy tree | R0 |
-| `tia_find_references` | Finds block references | R0 |
-
-### Compile Tools
-
-| Tool | Description | Risk |
-|---|---|---|
-| `tia_compile_software` | Compiles software container | R1 |
-
-### Change Tools (not used in MVP read-only flow)
-
-| Tool | Description | Risk |
-|---|---|---|
-| `tia_preview_block_change` | Previews proposed changes | R2 |
-| `tia_apply_approved_block_change` | Applies approved changes | R3 |
+| tia-explain | `agents/tia-explain.md` | `execute_read_batch`, `get_project_status` |
+| tia-review | `agents/tia-review.md` | `execute_read_batch`, `get_project_status` |
+| tia-change | `agents/tia-change.md` | `execute_read_batch`, `get_project_status`, `preview_write_batch`, `apply_write_batch` |
 
 ## Manual Test Procedure
 
 ### Prerequisites
 
-1. Build the solution: `dotnet build TiaAgent.sln`
-2. Start the MCP server: `dotnet run --project src/TiaAgent.McpHost`
-3. Start OpenCode (external process, configured to discover MCP at `http://127.0.0.1:43121/mcp`)
+1. Install Czarnak's MCP server: `dotnet tool install -g TiaMcpServer`
+2. Validate environment: `tia-mcp doctor`
+3. Build the solution: `dotnet build TiaAgent.sln`
+4. Start OpenCode with the config from `config/opencode.json`
 
-### Test A: Add-In → OpenCode
+### Test A: MCP Server Health
 
-**Command:** "Test OpenCode connection"
+```powershell
+tia-mcp doctor --project "C:\Projects\Line.ap21"
+```
 
-**Expected:** Response contains `OPENCODE_CONNECTION_OK`
+**Expected:** All checks pass (OS, .NET runtimes, TIA installation, Openness assemblies, user group).
 
-**Validates:** Add-In can reach OpenCode, create a session, start a task, and receive a response.
+### Test B: MCP Inspector (Standalone)
 
-### Test B: OpenCode → MCP (Roundtrip)
+```powershell
+npx -y @modelcontextprotocol/inspector tia-mcp
+```
 
-**Command:** "Test MCP roundtrip"
+**Expected:** 10 tools listed. `execute_read_batch` with `browse_project_tree` returns project tree.
 
-**Expected:** Response contains `TIA_MCP_ROUNDTRIP_OK` and proves `tia_ping` was called (not fabricated by model).
+### Test C: Add-In → OpenCode Roundtrip
 
-**Validates:** OpenCode discovers MCP server, calls `tia_ping`, receives real TIA data, returns result.
+1. Start TIA Portal V21, open a test project
+2. Select a PLC block in the project tree
+3. Right-click → AI Assistant → Explain selected object
 
-### Test C: Current TIA Context
+**Expected:** MessageBox shows the AI-generated explanation of the block.
 
-**Command:** Via MCP — OpenCode calls `tia_get_current_context`
-
-**Expected:** Returned data matches active TIA Portal instance (project name, version, PLC count).
-
-**Validates:** MCP tool correctly delegates to `ITiaProjectService`.
-
-### Test D: Captured Selection
-
-**Command:** Select a PLC block, trigger "Explain selected object"
-
-**Expected:** Task uses the object captured at command trigger time, not the current visual selection.
-
-**Validation:** Change the visual selection while the task is running. The task must still use the original captured object.
-
-### Test E: Read Selected Block
-
-**Command:** OpenCode calls `tia_read_block(objectId)` via MCP
-
-**Expected:** Result contains real block source code from the active project.
-
-**Validates:** The data comes from the actual project, not fixtures or mocks.
-
-### Test F: Final Response in TIA Portal
-
-**Command:** "Explain selected object" on FB_Conveyor
-
-**Expected:** Add-In UI shows:
-- Task status (running → completed)
-- Selected object metadata
-- Final explanation from OpenCode
-- Error details when applicable
-- Retry/cancel options
-
-### Test G: TIA Portal Responsiveness
-
-**Command:** Run a deliberately delayed OpenCode operation
-
-**Expected:**
-- TIA Portal does not freeze
-- Add-In remains responsive
-- Cancellation works
-- Timeout works
-- Second conflicting command is rejected or queued
-
-### Test H: Failure Scenarios
+### Test D: Failure Scenarios
 
 | Scenario | Expected Behavior |
 |---|---|
 | OpenCode not running | `OPENCODE_UNAVAILABLE` error with user-friendly message |
-| Incorrect OpenCode port | `OPENCODE_UNAVAILABLE` error |
-| MCP server unavailable | OpenCode reports tool discovery failure |
-| No TIA project open | `TIA_PROJECT_NOT_OPEN` from MCP tools |
-| Unsupported selection | `TIA_SELECTION_NOT_SUPPORTED` error |
-| Selection expired | `TIA_SELECTION_EXPIRED` error |
-| Tool timeout | `TIA_TIMEOUT` error |
-| Malformed OpenCode response | `OPENCODE_RESPONSE_INVALID` error |
+| tia-mcp not installed | OpenCode fails to spawn MCP server |
+| No TIA project open | `get_project_status` returns error |
+| Unsupported selection | Agent reports unsupported object type |
 
 ## Error Codes
 
@@ -213,71 +156,35 @@ TIA Portal Openness SDK
 | `OPENCODE_TASK_FAILED` | Task execution failed | "AI assistant encountered an error. Please try again." |
 | `TIA_NOT_CONNECTED` | TIA Portal not connected | "Not connected to TIA Portal." |
 | `TIA_PROJECT_NOT_OPEN` | No project open | "No TIA Portal project is open." |
-| `TIA_SESSION_EXPIRED` | Session expired | "TIA session expired. Please reconnect." |
-| `TIA_SELECTION_EXPIRED` | Selection token expired | "Selection expired. Please re-select." |
-| `TIA_OBJECT_NOT_FOUND` | Object not found | "Selected object not found." |
 | `TIA_TIMEOUT` | Operation timed out | "Operation timed out. Please try again." |
-| `TIA_CANCELLED` | Operation cancelled | "Operation was cancelled." |
+| `TIA_CANCELLED` | Operation cancelled | "The operation was cancelled." |
 
 ## Correlation ID Propagation
 
 Every command generates a correlation ID that flows through:
 
 ```text
-Add-In command → OpenCode session/task → MCP tool calls → ITiaProjectService → response
+Add-In command → OpenCode session/task → MCP tool calls → OpennessWorker → response
 ```
 
-Format: `corr-<guid>` or `tia-<short-guid>`
-
-The correlation ID appears in:
-- Structured log entries
-- Error responses
-- Audit events
-
-## Automated Tests
-
-Run all tests:
-
-```bash
-dotnet test TiaAgent.sln
-```
-
-Test coverage includes:
-- MCP tool handler behavior (TiaContextTools, TiaReadTools, TiaDiagnosticTools)
-- OpenCode orchestrator (session creation, task execution, cancellation, error handling)
-- Selection snapshot store (save, get, expire, session-scoped expiration)
-- Correlation context (async propagation, nested scopes)
-- Simulator integration (full explain-block flow, error scenarios)
-- Architecture constraints (no Siemens references in wrong projects)
-- DTO serialization
-- Error code mapping
+Format: `tia-<guid>`
 
 ## Architecture Decisions
 
-1. **OpenCode as external process** — The Add-In connects to an already-running OpenCode server. It does not start OpenCode.
+1. **Czarnak's tia-mcp as MCP server** — Replaces our custom MCP host. Uses stdio transport (no HTTP server on port 43121).
 
-2. **MCP server as separate process** — McpHost runs as a standalone ASP.NET Core app on port 43121. Avoids net48/net8.0 framework conflicts.
+2. **OpenCode spawns MCP server** — tia-mcp is launched as a child process by OpenCode. No separate process management.
 
-3. **Simulator for initial validation** — Uses `SimulatorTiaProjectService` with DemoConveyorLine data. Swap to `TiaAgent.Openness.TiaProjectService` when TIA Portal is available.
+3. **Selection context in prompt** — Object name/type are embedded in the agent message instead of using selection tokens (Czarnak's server has no token concept).
 
-4. **Async-first in Add-In** — All OpenCode/MCP communication uses async/await. No `GetAwaiter().GetResult()`.
+4. **Batch operations** — Agent combines related reads into single `execute_read_batch` calls for efficiency.
 
-5. **Selection token pattern** — Selections are captured at command trigger time as immutable snapshots, identified by tokens. The actual block content is fetched through MCP when OpenCode needs it.
+5. **Add-In calls orchestrator directly** — `ProjectTreeProvider.HandleAction` calls `OpenCodeOrchestrator.ExecuteTaskAsync` on a background thread (fire-and-forget from TIA's UI thread).
 
 ## Known Limitations
 
-1. **OpenCode API endpoints assumed** — The `OpenCodeHttpClient` uses a conventional REST API pattern. Verify against the actual OpenCode API.
+1. **OpenCode API endpoints assumed** — The `OpenCodeHttpClient` uses a conventional REST API pattern. Verify against the actual OpenCode/MiMoCode API.
 
-2. **Simulator data only** — The MCP server currently uses `SimulatorTiaProjectService`. Real TIA Portal integration requires the Openness adapter.
+2. **No selection tokens** — Object context is passed as text in the prompt. The agent must use `browse_project_tree` to discover block paths.
 
-3. **No authentication** — MCP server does not enforce authentication in the current configuration.
-
-4. **In-memory stores** — Selection snapshots and session data are in-memory only. Not persisted across restarts.
-
-## Recommended Next Steps
-
-1. **Verify OpenCode API** — Confirm the actual HTTP endpoints match `OpenCodeHttpClient`.
-2. **Add Openness adapter** — Implement `TiaAgent.Openness.TiaProjectService` for real TIA Portal.
-3. **Add authentication** — Implement MCP token-based authentication.
-4. **Add write operations** — After read-only flow is stable, implement the controlled write workflow.
-5. **Add WPF UI** — Replace `MessageBox.Show()` with a proper WPF panel in the Add-In.
+3. **Czarnak's server lacks `get_call_hierarchy`** — Use `read_cross_references` as a partial substitute.

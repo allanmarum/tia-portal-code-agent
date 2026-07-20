@@ -18,8 +18,6 @@
     <ProjectReference Include="..\..\src\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
     <ProjectReference Include="..\..\src\TiaAgent.Application\TiaAgent.Application.csproj" />
     <ProjectReference Include="..\..\src\TiaAgent.AddIn\TiaAgent.AddIn.csproj" />
-    <ProjectReference Include="..\..\src\TiaAgent.Simulator\TiaAgent.Simulator.csproj" />
-    <ProjectReference Include="..\..\src\TiaAgent.Mcp\TiaAgent.Mcp.csproj" />
     <ProjectReference Include="..\..\src\TiaAgent.OpenCode\TiaAgent.OpenCode.csproj" />
   </ItemGroup>
 </Project>

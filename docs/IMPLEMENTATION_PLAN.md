@@ -1,9 +1,11 @@
 # TIA Portal AI Agent Platform — Implementation Plan
 
-**Status**: proposed  
-**Date**: 2026-07-19  
-**Target**: TIA Portal V21, .NET Framework 4.8, x64  
-**MVP**: Read-only, simulator-first
+**Status**: superseded — MCP and Openness are now delegated to [Czarnak/tia-portal-mcp](https://github.com/Czarnak/tia-portal-mcp)
+**Date**: 2026-07-19
+**Target**: TIA Portal V21, .NET Framework 4.8, x64
+**MVP**: Read-only
+
+> **Note (2026-07-20):** This plan originally proposed building a custom MCP server (`TiaAgent.Mcp`, `TiaAgent.McpHost`), Openness adapter (`TiaAgent.Openness`), and simulator (`TiaAgent.Simulator`). These have been replaced by Czarnak's maintained `TiaMcpServer` (stdio transport, batch operations, write safety tokens). The remaining codebase contains only: Add-In, Application (orchestrator), Contracts, and OpenCode (HTTP client). See `README.md` for the current architecture.
 
 ---
 

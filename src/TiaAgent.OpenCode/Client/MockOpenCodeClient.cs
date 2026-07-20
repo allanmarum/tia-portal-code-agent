@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using TiaAgent.Contracts.Abstractions;
-using TiaAgent.Contracts.Dtos;
 
 namespace TiaAgent.OpenCode.Client;
 

@@ -6,7 +6,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using TiaAgent.Contracts.Abstractions;
-using TiaAgent.Contracts.Dtos;
 
 namespace TiaAgent.OpenCode.Client;
 
