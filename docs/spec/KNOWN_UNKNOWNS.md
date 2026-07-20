@@ -96,6 +96,8 @@ Evidence required:
 - official OpenAPI or SDK;
 - health/task/progress/cancel prototype.
 
+**Resolved**: OpenCode/MiMoCode exposes an HTTP API at port 43120. The `OpenCodeHttpClient` implements session creation (`POST /api/sessions`), task start (`POST /api/sessions/{id}/tasks`), event streaming (`GET /api/tasks/{id}/events` via SSE), cancellation (`POST /api/tasks/{id}/cancel`), and health check (`GET /health`). MCP servers are configured in `config/opencode.json` under the `mcp` key.
+
 ## KU-008 - MCP transport in Add-In process
 
 Question:
@@ -112,7 +114,7 @@ Fallback:
 
 - external MCP host with named-pipe proxy.
 
-**Partially answered**: The templates confirm the Add-In targets `net48` (`FrameworkVersion` is hardcoded to `net48` in the template). This constrains MCP SDK options: the `ModelContextProtocol.AspNetCore` package requires net8.0, so the MCP server MUST run in a separate process. The robust architecture (named-pipe IPC) is therefore the default path, not just a fallback.
+**Resolved**: The Add-In targets `net48`. The `ModelContextProtocol.AspNetCore` package requires net8.0, so the MCP server runs in a separate process. We use [Czarnak/tia-portal-mcp](https://github.com/Czarnak/tia-portal-mcp) as the external MCP server — it uses stdio transport (no HTTP port), a two-process model (.NET 8 host + .NET 4.8 OpennessWorker), and is installed as a .NET global tool (`dotnet tool install -g TiaMcpServer`). OpenCode spawns it automatically via the `config/opencode.json` configuration.
 
 ## KU-009 - Package deployment permissions
 

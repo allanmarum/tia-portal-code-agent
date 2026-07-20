@@ -5,6 +5,36 @@
 - **TIA Portal V21** installed at: `C:\Program Files\Siemens\Automation\Portal V21`
 - **All Siemens assemblies** in: `C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\net48\`
 - **Publisher.exe**: `C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe`
+- **MCP Server**: [Czarnak/tia-portal-mcp](https://github.com/Czarnak/tia-portal-mcp) — install with `dotnet tool install -g TiaMcpServer`
+
+## MCP Server Setup
+
+The project uses Czarnak's external MCP server instead of a custom one. It communicates via stdio transport (no HTTP server needed).
+
+```powershell
+# Install
+dotnet tool install -g TiaMcpServer
+
+# Validate environment
+tia-mcp doctor
+
+# Test with MCP Inspector
+npx -y @modelcontextprotocol/inspector tia-mcp
+```
+
+The MCP server is spawned automatically by OpenCode when configured in `config/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "tia-portal": {
+      "type": "local",
+      "command": ["tia-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
 
 ## Build + Package + Install (one command)
 
@@ -39,16 +69,33 @@ Do NOT use Publisher-only — it misses transitive deps (System.Text.Json, etc.)
 
 ## Add-In Features
 
-- **"AI Assistant"** context menu: Explain, Review, Propose change (requires MCP server)
+- **"AI Assistant"** context menu: Explain, Review, Propose change (requires OpenCode + MCP server)
 - **"TIA Agent Diagnostics"** context menu: Test Integration (self-contained, no dependencies)
 
 ## How to Test
 
-1. Open TIA Portal V21
-2. Open or create a project
-3. Right-click in Project Tree → **TIA Agent Diagnostics** → **Test Integration**
-4. MessageBox confirms the Add-In is functional
-5. Check `%LOCALAPPDATA%\TiaAgent\addin.log` for diagnostic entries
+1. Install MCP server: `dotnet tool install -g TiaMcpServer`
+2. Validate: `tia-mcp doctor`
+3. Open TIA Portal V21 with a project
+4. Right-click in Project Tree → **TIA Agent Diagnostics** → **Test Integration**
+5. MessageBox confirms the Add-In is functional
+6. Right-click a PLC block → **AI Assistant** → **Explain selected object**
+7. Check `%LOCALAPPDATA%\TiaAgent\addin.log` for diagnostic entries
+
+## End-to-End Flow
+
+```
+User right-clicks block in TIA Portal
+  → ProjectTreeProvider captures object name/type
+  → OpenCodeOrchestrator.ExecuteTaskAsync (background thread)
+    → HTTP POST to OpenCode (port 43120)
+      → OpenCode spawns tia-mcp (stdio child process)
+        → tia-mcp attaches to running TIA Portal
+      → Agent calls execute_read_batch (browse_project_tree, get_block_content)
+      → Agent generates explanation
+    → Response returned via SSE
+  → MessageBox shows result
+```
 
 ## Key Technical Details
 
@@ -56,9 +103,12 @@ Do NOT use Publisher-only — it misses transitive deps (System.Text.Json, etc.)
 - **Config.xml**: Uses `DisplayInMultiuser`, `UnrestrictedPermissions`, `TIA.ReadWrite`
 - **SIEMENS flag**: Auto-detected in `Directory.Build.props` when Siemens assemblies exist
 - **All Siemens refs**: `Private=false`, resolved from TIA at runtime
+- **MCP server**: External process (Czarnak's tia-mcp), stdio transport, no HTTP port
 
 ## Troubleshooting
 
 - **Red X on Add-In**: Rebuild with `.\build.ps1 all` — old packages may be stale
 - **Context menus missing**: Check `%LOCALAPPDATA%\TiaAgent\addin.log`
 - **Build fails**: Verify TIA Portal V21 is installed
+- **MCP server not found**: Run `tia-mcp doctor` to validate installation
+- **OpenCode unavailable**: Ensure OpenCode is running on port 43120
