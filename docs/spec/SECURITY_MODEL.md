@@ -92,9 +92,28 @@ Default: no public tool.
 
 ## 4. `Config.xml` least privilege
 
-The Siemens sample lists many available security permissions and explicitly warns that only required permissions should be granted.
+The `Config.xml` manifest declares three permission categories. Only the minimum required set should be declared.
 
-Repository policy:
+### 4.1 `TIAPermissions`
+
+Controls TIA Portal Openness access level:
+
+- `<TIA.ReadWrite />` - full read/write access to the engineering project;
+- `<TIA.ReadOnly />` - read-only access.
+
+**MVP policy**: Use `<TIA.ReadOnly />` unless write capability is explicitly required. See `ADDIN_TECHNICAL_SPEC.md` section 4.1.
+
+### 4.2 `SecurityPermissions`
+
+Declares individual .NET Code Access Security (CAS) permissions. Each permission requires an explicit element. Available permissions include process start, file I/O, network, registry, and UI permissions.
+
+### 4.3 `UnrestrictedAccess` (V19+ only)
+
+Grants the Add-In all permissions the current user holds. Requires a justification comment (10-120 characters).
+
+**MVP policy**: Do not use `UnrestrictedAccess`. It conflicts with the least-privilege requirement.
+
+### 4.4 Repository policy
 
 - every requested permission must have a feature ID;
 - permissions are reviewed in pull requests;

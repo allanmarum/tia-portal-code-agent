@@ -168,7 +168,53 @@ dotnet test TiaAgent.sln --configuration Release
 dotnet build src/TiaAgent.McpHost/TiaAgent.McpHost.csproj -c Release
 ```
 
-### 3.3 global.json
+### 3.3 Add-In Packaging (TiaAgent.AddIn)
+
+The TiaAgent.AddIn project produces the .addin package for TIA Portal deployment. See docs/spec/ADDIN_TECHNICAL_SPEC.md for the full specification.
+
+**Config.xml** (must be in the project output):
+
+`xml
+<?xml version="1.0" encoding="utf-8" ?>
+<PackageConfiguration xmlns="http://www.siemens.com/automation/Openness/AddIn/Publisher/V21">
+  <Author>TIA Portal Code Agent</Author>
+  <Description>AI agent integration for TIA Portal via MCP</Description>
+  <AddInVersion>0.1.0</AddInVersion>
+  <Product>
+    <Name>TIA Portal Code Agent</Name>
+    <Id><!-- generate GUID --></Id>
+    <Version>0.0.1.0</Version>
+  </Product>
+  <FeatureAssembly>
+    <AssemblyInfo>
+      <Assembly>TiaAgent.AddIn.dll</Assembly>
+      <Pdb>TiaAgent.AddIn.pdb</Pdb>
+    </AssemblyInfo>
+  </FeatureAssembly>
+  <RequiredPermissions>
+    <TIAPermissions>
+      <TIA.ReadOnly />
+    </TIAPermissions>
+  </RequiredPermissions>
+</PackageConfiguration>
+`
+
+**Publisher integration** (Add-In csproj):
+
+`xml
+<Target Name="PublishAddin" BeforeTargets="AfterBuild">
+  <Exec Command="&quot;\PublicAPI\V21.AddIn\...\Siemens.Engineering.AddIn.Publisher.exe&quot;
+        -f &quot;Config.xml&quot;
+        -v -c
+        -l &quot;publisher_log.txt&quot;"/>
+</Target>
+`
+
+**Deployment**: Copy TiaAgent.AddIn.addin to %APPDATA%\Siemens\Automation\Portal V21\UserAddIns\.
+
+**Debugging**: Use Siemens.Engineering.AddIn.DebugStarter.exe or VS Code with the ddInDebugging.launch_debug_starter launch type.
+
+### 3.4 global.json
 ```json
 {
   "sdk": {

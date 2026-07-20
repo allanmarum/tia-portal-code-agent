@@ -67,7 +67,7 @@ public class DependencyTests
     [Fact]
     public void AddIn_ShouldNotReferenceSimulator()
     {
-        var assembly = typeof(TiaAgent.AddIn.Placeholder).Assembly;
+        var assembly = typeof(TiaAgent.AddIn.ErrorMapper).Assembly;
         var references = assembly.GetReferencedAssemblies();
 
         references.Should().NotContain(r =>

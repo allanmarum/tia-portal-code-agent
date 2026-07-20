@@ -1,31 +1,32 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    TIA Portal Code Agent - Simple builder for build, test, and packaging.
+    TIA Portal Code Agent - Build, test, and packaging tool.
 
 .DESCRIPTION
-    Generates the correct .addin file for installation in TIA Portal V21.
+    Generates the correct .addin (OPC) package for installation in TIA Portal V21.
     Usage: .\build.ps1 [command]
 
 .COMMANDS
     build       - Compiles the solution
     test        - Runs the tests
-    pack        - Packages the Add-In (.addin)
+    pack        - Packages the Add-In (.addin OPC package)
     run         - Starts the MCP server with simulator
     all         - Build + Test + Pack
     clean       - Cleans build artifacts
     install     - Copies to TIA Portal Add-Ins folder
     dev         - Starts the development host
+    verify      - Verifies the .addin package contents
 
 .EXAMPLE
     .\build.ps1 build
     .\build.ps1 all
     .\build.ps1 pack
-    .\build.ps1 run
+    .\build.ps1 verify
 #>
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("build", "test", "pack", "run", "all", "clean", "install", "dev", "help")]
+    [ValidateSet("build", "test", "pack", "run", "all", "clean", "install", "dev", "verify", "help")]
     [string]$Command = "help"
 )
 
@@ -37,14 +38,22 @@ $Version = "0.1.0"
 # ============================================================
 # Auto-detect TIA Portal V21 assemblies
 # ============================================================
-if (-not $env:SiemensAssembliesExist) {
-    $tiaPath = "C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21"
-    $net48Path = "$tiaPath\net48"
-    if (Test-Path "$net48Path\Siemens.Engineering.AddIn.Base.dll") {
-        $env:SiemensAssembliesExist = "true"
-        $env:TiaPublicApiDir = $tiaPath
-        Write-Host "  TIA Portal V21 detected: $tiaPath" -ForegroundColor Gray
-    }
+$tiaBasePath = "C:\Program Files\Siemens\Automation\Portal V21"
+$tiaNet48Path = "$tiaBasePath\PublicAPI\V21\net48"
+$tiaAddInPath = "$tiaBasePath\PublicAPI\V21.AddIn"
+
+$siemensDetected = $false
+if (Test-Path "$tiaNet48Path\Siemens.Engineering.Base.dll") {
+    $env:TiaPublicApiDir = $tiaNet48Path
+    $siemensDetected = $true
+    Write-Host "  TIA Openness V21 detected: $tiaNet48Path" -ForegroundColor Gray
+}
+if (Test-Path "$tiaAddInPath\Siemens.Engineering.AddIn.Base.dll") {
+    $env:TiaAddInApiDir = $tiaAddInPath
+    Write-Host "  TIA Add-In V21 detected: $tiaAddInPath" -ForegroundColor Gray
+}
+if ($siemensDetected) {
+    $env:SiemensAssembliesExist = "true"
 }
 
 # ============================================================
@@ -75,233 +84,294 @@ function Write-Info($text) {
     Write-Host "  $text" -ForegroundColor Gray
 }
 
+function Write-Warn($text) {
+    Write-Host "  WARN: $text" -ForegroundColor DarkYellow
+}
+
 # ============================================================
-# Commands
+# Build
 # ============================================================
 
 function Invoke-Build {
     Write-Header "BUILD"
     Write-Step 1 3 "Compiling solution..."
-    
+
     dotnet build "$Root\TiaAgent.sln" --configuration $Config --verbosity quiet
     if ($LASTEXITCODE -ne 0) { Write-Fail "Build failed"; exit 1 }
     Write-Ok "Solution compiled"
-    
+
     Write-Step 2 3 "Verifying projects..."
     $projects = Get-ChildItem "$Root\src\*\*.csproj" -ErrorAction SilentlyContinue
     Write-Ok "$($projects.Count) source projects found"
-    
+
     $tests = Get-ChildItem "$Root\tests\*\*.csproj" -ErrorAction SilentlyContinue
     Write-Ok "$($tests.Count) test projects found"
-    
+
     Write-Step 3 3 "Verifying artifacts..."
-    $dlls = Get-ChildItem "$Root\src\*\bin\$Config\*\*.dll" -Recurse -ErrorAction SilentlyContinue
-    Write-Ok "$($dlls.Count) DLLs generated"
-    
+    $addinDll = "$Root\src\TiaAgent.AddIn\bin\$Config\net48\TiaAgent.AddIn.dll"
+    if (Test-Path $addinDll) {
+        Write-Ok "TiaAgent.AddIn.dll built"
+    } else {
+        Write-Fail "TiaAgent.AddIn.dll not found at: $addinDll"
+        exit 1
+    }
+
     Write-Host ""
     Write-Host "Build completed successfully!" -ForegroundColor Green
 }
 
+# ============================================================
+# Test
+# ============================================================
+
 function Invoke-Test {
     Write-Header "TESTS"
     Write-Step 1 2 "Running tests..."
-    
+
     dotnet test "$Root\TiaAgent.sln" --configuration $Config --verbosity normal
     if ($LASTEXITCODE -ne 0) { Write-Fail "Tests failed"; exit 1 }
-    
+
     Write-Step 2 2 "Results"
     Write-Ok "All tests passed"
 }
 
+# ============================================================
+# Pack -- Creates a proper OPC (.addin) package
+# ============================================================
+
 function Invoke-Pack {
     Write-Header "PACKAGING"
-    
+
+    Add-Type -AssemblyName WindowsBase
+
     $packDir = "$Root\artifacts"
-    $addinDir = "$packDir\TiaAgent.AddIn"
     $versionTag = $Version -replace '\.', '-'
     $addinFile = "$packDir\TiaAgent-$versionTag.addin"
-    
-    # Clean previous packages
-    Write-Step 1 6 "Cleaning previous packages..."
-    if (Test-Path $addinDir) { Remove-Item $addinDir -Recurse -Force }
-    if (Test-Path $addinFile) { Remove-Item $addinFile -Force }
-    New-Item -ItemType Directory -Path $addinDir -Force | Out-Null
-    Write-Ok "Directory cleaned"
-    
-    # Copy Add-In DLLs
-    Write-Step 2 6 "Copying Add-In DLLs..."
     $addinBin = "$Root\src\TiaAgent.AddIn\bin\$Config\net48"
-    if (Test-Path $addinBin) {
-        Copy-Item "$addinBin\*.dll" $addinDir -ErrorAction SilentlyContinue
-        Write-Ok "Add-In DLLs copied"
-    } else {
-        Write-Fail "Add-In build directory not found: $addinBin"
+    $configXml = "$Root\src\TiaAgent.AddIn\Config.xml"
+    $publisher = "C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe"
+
+    # Clean
+    Write-Step 1 6 "Cleaning previous packages..."
+    if (Test-Path $addinFile) { Remove-Item $addinFile -Force }
+    if (-not (Test-Path $packDir)) { New-Item -ItemType Directory -Path $packDir -Force | Out-Null }
+    Write-Ok "Clean"
+
+    # Verify build output
+    if (-not (Test-Path "$addinBin\TiaAgent.AddIn.dll")) {
+        Write-Fail "TiaAgent.AddIn.dll not found. Run: .\build.ps1 build"
         exit 1
     }
-    
-    # Copy dependency DLLs
-    Write-Step 3 6 "Copying dependencies..."
-    $deps = @(
-        "TiaAgent.Contracts",
-        "TiaAgent.Application",
-        "TiaAgent.Simulator",
-        "TiaAgent.OpenCode"
+
+    # Copy Config.xml to build dir
+    Copy-Item $configXml "$addinBin\Config.xml" -Force
+
+    # Step 2: Run Siemens Publisher
+    Write-Step 2 6 "Running Siemens Publisher..."
+    if (-not (Test-Path $publisher)) {
+        Write-Fail "Publisher not found: $publisher"
+        exit 1
+    }
+    & $publisher -f "$addinBin\Config.xml" -o $addinFile -l "$addinBin\publisher_log.txt" -v -c 2>&1 | ForEach-Object { Write-Info $_ }
+    if ($LASTEXITCODE -ne 0) { Write-Fail "Publisher failed"; exit 1 }
+    Write-Ok "Publisher created base package"
+
+    # Step 3: Inject transitive NuGet dependencies
+    Write-Step 3 6 "Injecting transitive dependencies..."
+    $transitiveDeps = @(
+        "System.Text.Json.dll",
+        "System.Text.Encodings.Web.dll",
+        "System.Buffers.dll",
+        "System.Memory.dll",
+        "System.Runtime.CompilerServices.Unsafe.dll",
+        "Microsoft.Bcl.AsyncInterfaces.dll",
+        "System.Threading.Tasks.Extensions.dll",
+        "System.Numerics.Vectors.dll",
+        "Microsoft.Extensions.DependencyInjection.Abstractions.dll",
+        "Microsoft.Extensions.Logging.Abstractions.dll"
     )
-    foreach ($dep in $deps) {
-        $depBin = "$Root\src\$dep\bin\$Config\netstandard2.0"
-        if (Test-Path $depBin) {
-            Copy-Item "$depBin\*.dll" $addinDir -ErrorAction SilentlyContinue
+    $searchDirs = @(
+        $addinBin,
+        "$Root\src\TiaAgent.Contracts\bin\$Config\netstandard2.0",
+        "$Root\src\TiaAgent.Application\bin\$Config\netstandard2.0",
+        "$Root\src\TiaAgent.OpenCode\bin\$Config\netstandard2.0"
+    )
+    $pkg = [System.IO.Packaging.Package]::Open($addinFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite)
+    $injected = 0
+    foreach ($dep in $transitiveDeps) {
+        $depPath = $null
+        foreach ($dir in $searchDirs) {
+            $candidate = Join-Path $dir $dep
+            if (Test-Path $candidate) { $depPath = $candidate; break }
+        }
+        if ($depPath) {
+            $bytes = [System.IO.File]::ReadAllBytes($depPath)
+            $depAsmName = [System.Reflection.AssemblyName]::GetAssemblyName($depPath)
+            $name = $depAsmName.Name.ToUpper()
+            $ver = $depAsmName.Version.ToString()
+            $pkt = "NULL"
+            $pktBytes = $depAsmName.GetPublicKeyToken()
+            if ($pktBytes -and $pktBytes.Length -gt 0) {
+                $pkt = ($pktBytes | ForEach-Object { $_.ToString("x2") }) -join ""
+            }
+            $uri = "/LocalAssemblyCache/$name,%20VERSION=$ver,%20CULTURE=NEUTRAL,%20PUBLICKEYTOKEN=$pkt,%20PROCESSORARCHITECTURE=MSIL"
+            try {
+                $part = $pkg.CreatePart([System.Uri]::new($uri, [System.UriKind]::Relative), "application/octet-stream")
+                $stream = $part.GetStream()
+                $stream.Write($bytes, 0, $bytes.Length)
+                $stream.Close()
+                $injected++
+            } catch {
+                Write-Warn "Skipped (exists): $dep"
+            }
+        } else {
+            Write-Warn "Not found: $dep"
         }
     }
-    Write-Ok "Dependencies copied"
-    
-    # Generate Config.xml (V21 Publisher schema)
-    Write-Step 4 6 "Generating Config.xml..."
-    $configXml = @"
-<?xml version="1.0" encoding="utf-8"?>
-<PackageConfiguration xmlns="http://www.siemens.com/automation/Openness/AddIn/Publisher/V21">
-  <Author>TIA Agent Project</Author>
-  <Description>AI-powered engineering assistant for TIA Portal V21</Description>
-  <AddInVersion>$Version</AddInVersion>
-  <Product>
-    <Name>TIA Portal Code Agent</Name>
-    <Id>tia-portal-code-agent</Id>
-    <Version>$Version.0</Version>
-  </Product>
-  <FeatureAssembly>
-    <AssemblyInfo>
-      <Assembly>TiaAgent.AddIn.dll</Assembly>
-    </AssemblyInfo>
-  </FeatureAssembly>
-  <AdditionalAssemblies>
-    <AssemblyInfo>
-      <Assembly>TiaAgent.Contracts.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>TiaAgent.Application.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>TiaAgent.Simulator.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>TiaAgent.OpenCode.dll</Assembly>
-    </AssemblyInfo>
-  </AdditionalAssemblies>
-  <RequiredPermissions>
-    <TIAPermissions>
-      <TIA.ReadOnly />
-    </TIAPermissions>
-  </RequiredPermissions>
-</PackageConfiguration>
-"@
-    $configXml | Out-File -FilePath "$addinDir\Config.xml" -Encoding UTF8
-    Write-Ok "Config.xml generated"
-    
-    # Run Siemens Publisher to create OPC .addin package
-    Write-Step 5 6 "Running Siemens Publisher..."
-    $publisher = "C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe"
-    if (Test-Path $publisher) {
-        & $publisher --configuration "$addinDir\Config.xml" --outfile $addinFile --console 2>&1 | ForEach-Object { Write-Info $_ }
-        if ($LASTEXITCODE -ne 0) { Write-Fail "Publisher failed"; exit 1 }
-        Write-Ok ".addin file created: $addinFile"
+    $pkg.Close()
+    Write-Ok "Injected $injected transitive dependencies"
+
+    # Step 4: Sign the package
+    Write-Step 4 6 "Signing package..."
+    $signerExe = "$Root\tools\OpcSigner\bin\$Config\net48\OpcSigner.exe"
+    if (Test-Path $signerExe) {
+        & $signerExe $addinFile 2>&1 | ForEach-Object { Write-Info $_ }
+        Write-Ok "Package signed"
     } else {
-        Write-Fail "Publisher not found: $publisher"
-        Write-Info "Falling back to ZIP packaging (will not work in TIA Portal)"
-        $tempZip = "$packDir\temp.zip"
-        Compress-Archive -Path "$addinDir\*" -DestinationPath $tempZip -Force
-        Move-Item $tempZip $addinFile -Force
-        Write-Ok ".addin file created (ZIP fallback): $addinFile"
+        Write-Info "OpcSigner not found -- package will be unsigned"
     }
-    
+
+    # Step 5: Verify
+    Write-Step 5 6 "Verifying package..."
+    $pkg = [System.IO.Packaging.Package]::Open($addinFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
+    $partCount = 0
+    $hasFeature = $false
+    foreach ($p in $pkg.GetParts()) {
+        $partCount++
+        if ($p.Uri.ToString() -match "TIAAGENT.ADDIN") { $hasFeature = $true }
+    }
+    $pkg.Close()
+    if ($hasFeature) { Write-Ok "Feature assembly present" }
+    else { Write-Fail "Feature assembly missing!" }
+    Write-Ok "Total parts: $partCount"
+
     # Summary
     Write-Step 6 6 "Package summary..."
     $size = (Get-Item $addinFile).Length / 1KB
-    $files = Get-ChildItem $addinDir -Recurse -File
     Write-Info "File: $addinFile"
     Write-Info "Size: $([math]::Round($size, 1)) KB"
     Write-Info "Version: $Version"
-    Write-Info "Files: $($files.Count)"
-    
-    # Inject Security permission (required by TIA Portal)
-    Write-Step 6 8 "Injecting Security permission..."
-    Add-Type -AssemblyName WindowsBase -ErrorAction SilentlyContinue
-    try {
-        $package = [System.IO.Packaging.Package]::Open($addinFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite)
-        $exists = $false
-        foreach ($p in $package.GetParts()) { if ($p.Uri.ToString() -match "Security") { $exists = $true } }
-        if (-not $exists) {
-            $sec = $package.CreatePart([System.Uri]::new("/Permissions/Required/Security/System.UnrestrictedAccess", [System.UriKind]::Relative), "text/plain")
-            $w = New-Object System.IO.StreamWriter($sec.GetStream())
-            $w.Write("System.UnrestrictedAccess`nTerminal window requires full UI, file I/O, environment, and process permissions")
-            $w.Close()
-        }
-        foreach ($p in $package.GetParts()) {
-            if ($p.Uri.ToString() -eq "/_rels/.rels") {
-                $rr = New-Object System.IO.StreamReader($p.GetStream())
-                $rx = $rr.ReadToEnd()
-                $rr.Close()
-                if ($rx -notmatch "UnrestrictedAccess") {
-                    $rx = $rx.Replace('<Relationship Type="Tia"', '<Relationship Type="Security" Target="/Permissions/Required/Security/System.UnrestrictedAccess" Id="System.UnrestrictedAccess" /><Relationship Type="Tia"')
-                    $rs = $p.GetStream([System.IO.FileMode]::Create)
-                    $rw = New-Object System.IO.StreamWriter($rs)
-                    $rw.Write($rx)
-                    $rw.Close()
-                }
-            }
-        }
-        Write-Ok "Security permission injected"
-    } catch { Write-Warn "Security injection skipped: $_" }
-
-    # OPC Digital Signature (required by TIA Portal)
-    Write-Step 7 8 "Signing package..."
-    try {
-        $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -match "TIA Portal Code Agent" } | Select-Object -First 1
-        if ($cert) {
-            $sigManager = New-Object System.IO.Packaging.PackageDigitalSignatureManager($package)
-            $partUris = New-Object System.Collections.Generic.List[System.Uri]
-            foreach ($p in $package.GetParts()) { $partUris.Add($p.Uri) }
-            $sigManager.Sign($partUris, $cert)
-            Write-Ok "Signed with: $($cert.Thumbprint)"
-        } else { Write-Warn "No signing certificate found" }
-    } catch { Write-Warn "Signing skipped: $_" }
-    $package.Close()
-
-    # Summary
-    Write-Step 8 8 "Package summary..."
-    $size = (Get-Item $addinFile).Length / 1KB
-    $files = Get-ChildItem $addinDir -Recurse -File
-    Write-Info "File: $addinFile"
-    Write-Info "Size: $([math]::Round($size, 1)) KB"
-    Write-Info "Version: $Version"
-    Write-Info "Files: $($files.Count)"
+    Write-Info "Publisher: Siemens.Engineering.AddIn.Publisher.exe"
 
     Write-Host ""
     Write-Host "Packaging completed!" -ForegroundColor Green
     Write-Host "  To install: .\build.ps1 install" -ForegroundColor Gray
+    Write-Host "  To verify:  .\build.ps1 verify" -ForegroundColor Gray
 }
+
+# ============================================================
+# Verify -- Checks the .addin package contents
+# ============================================================
+
+function Invoke-Verify {
+    Write-Header "VERIFY PACKAGE"
+
+    Add-Type -AssemblyName WindowsBase
+
+    $packDir = "$Root\artifacts"
+    $versionTag = $Version -replace '\.', '-'
+    $addinFile = "$packDir\TiaAgent-$versionTag.addin"
+
+    if (-not (Test-Path $addinFile)) {
+        Write-Fail ".addin file not found: $addinFile"
+        Write-Info "Run: .\build.ps1 pack"
+        exit 1
+    }
+
+    Write-Step 1 4 "Opening package..."
+    $pkg = [System.IO.Packaging.Package]::Open($addinFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
+    Write-Ok "Package opened"
+
+    Write-Step 2 4 "Checking parts..."
+    $parts = $pkg.GetParts()
+    $partList = @()
+    $hasFeature = $false
+    $hasEngineeringVersion = $false
+    $hasMeta = $false
+    $hasPermissions = $false
+
+    foreach ($p in $parts) {
+        $uri = $p.Uri.ToString()
+        $partList += $uri
+        if ($uri -match "TIAAGENT\.ADDIN") { $hasFeature = $true }
+        if ($uri -eq "/EngineeringVersion") { $hasEngineeringVersion = $true }
+        if ($uri -match "/Meta/") { $hasMeta = $true }
+        if ($uri -match "/Permissions/") { $hasPermissions = $true }
+    }
+
+    Write-Info "Total parts: $($partList.Count)"
+
+    $checks = @(
+        @{ Name = "Feature assembly (TiaAgent.AddIn.dll)"; Ok = $hasFeature },
+        @{ Name = "EngineeringVersion"; Ok = $hasEngineeringVersion },
+        @{ Name = "Meta metadata"; Ok = $hasMeta },
+        @{ Name = "Permissions"; Ok = $hasPermissions }
+    )
+
+    $allOk = $true
+    foreach ($check in $checks) {
+        if ($check.Ok) { Write-Ok $check.Name }
+        else { Write-Fail $check.Name; $allOk = $false }
+    }
+
+    # List all parts
+    Write-Step 3 4 "Parts listing:"
+    foreach ($uri in ($partList | Sort-Object)) {
+        Write-Info "  $uri"
+    }
+
+    $pkg.Close()
+
+    Write-Step 4 4 "Result"
+    if ($allOk) {
+        Write-Host ""
+        Write-Host "Package verification PASSED!" -ForegroundColor Green
+    } else {
+        Write-Host ""
+        Write-Host "Package verification FAILED -- missing required parts" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# ============================================================
+# Run -- Starts MCP server with simulator
+# ============================================================
 
 function Invoke-Run {
     Write-Header "MCP SERVER (SIMULATOR)"
     Write-Info "Starting MCP server at http://127.0.0.1:43121/mcp"
     Write-Info "Press Ctrl+C to stop"
     Write-Host ""
-    
+
     dotnet run --project "$Root\src\TiaAgent.McpHost\TiaAgent.McpHost.csproj" --configuration $Config
 }
+
+# ============================================================
+# Dev -- Starts the development host
+# ============================================================
 
 function Invoke-Dev {
     Write-Header "DEVELOPMENT HOST"
     Write-Info "Starting development console..."
     Write-Host ""
-    
-    # Create a temporary console project to run the DevelopmentHost
+
     $tempProject = "$Root\artifacts\TiaAgent.DevHost\TiaAgent.DevHost.csproj"
     $tempDir = Split-Path $tempProject -Parent
-    
+
     if (!(Test-Path $tempDir)) {
         New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
     }
-    
+
     $projContent = @"
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -317,7 +387,7 @@ function Invoke-Dev {
 </Project>
 "@
     $projContent | Out-File -FilePath $tempProject -Encoding UTF8
-    
+
     $programContent = @"
 using TiaAgent.AddIn;
 using TiaAgent.Application.Common;
@@ -331,54 +401,62 @@ var host = new DevelopmentHost(simulator, simulator);
 await host.RunAsync();
 "@
     $programContent | Out-File -FilePath "$tempDir\Program.cs" -Encoding UTF8
-    
+
     dotnet run --project $tempProject
 }
 
+# ============================================================
+# Clean
+# ============================================================
+
 function Invoke-Clean {
     Write-Header "CLEAN"
-    
+
     Write-Step 1 3 "Removing bin/ and obj..."
-    Get-ChildItem "$Root\src" -Directory -Recurse -Include "bin", "obj" | 
+    Get-ChildItem "$Root\src" -Directory -Recurse -Include "bin", "obj" |
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    Get-ChildItem "$Root\tests" -Directory -Recurse -Include "bin", "obj" | 
+    Get-ChildItem "$Root\tests" -Directory -Recurse -Include "bin", "obj" |
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     Write-Ok "Build directories removed"
-    
+
     Write-Step 2 3 "Removing artifacts..."
     if (Test-Path "$Root\artifacts") {
         Remove-Item "$Root\artifacts" -Recurse -Force
     }
     Write-Ok "Artifacts removed"
-    
+
     Write-Step 3 3 "Cleanup completed"
     Write-Ok "Ready for rebuild"
 }
 
+# ============================================================
+# Install
+# ============================================================
+
 function Invoke-Install {
     Write-Header "INSTALL TO TIA PORTAL"
-    
+
     $userAddIns = "$env:APPDATA\Siemens\Automation\Portal V21\UserAddIns"
-    
+
     if (!(Test-Path $userAddIns)) {
-        Write-Fail "Add-Ins folder not found: $userAddIns"
-        Write-Info "Make sure TIA Portal V21 has been run at least once"
-        exit 1
+        Write-Warn "Add-Ins folder not found: $userAddIns"
+        Write-Info "Creating folder (TIA Portal will scan it on startup)..."
+        New-Item -ItemType Directory -Path $userAddIns -Force | Out-Null
     }
-    
+
     $packDir = "$Root\artifacts"
     $versionTag = $Version -replace '\.', '-'
     $addinFile = "$packDir\TiaAgent-$versionTag.addin"
-    
+
     if (!(Test-Path $addinFile)) {
         Write-Fail ".addin file not found. Run: .\build.ps1 pack"
         exit 1
     }
-    
+
     Write-Step 1 2 "Copying to Add-Ins folder..."
     Copy-Item $addinFile $userAddIns -Force
     Write-Ok "File copied to: $userAddIns"
-    
+
     Write-Step 2 2 "Installation completed"
     Write-Host ""
     Write-Host "To activate the Add-In:" -ForegroundColor Cyan
@@ -386,7 +464,13 @@ function Invoke-Install {
     Write-Host "  2. Go to Options > Settings > Add-Ins" -ForegroundColor White
     Write-Host "  3. Activate 'TIA Portal Code Agent'" -ForegroundColor White
     Write-Host ""
+    Write-Host "To test: Right-click in project tree > TIA Agent Diagnostics > Test Integration" -ForegroundColor Yellow
+    Write-Host ""
 }
+
+# ============================================================
+# Help
+# ============================================================
 
 function Show-Help {
     Write-Header "TIA PORTAL CODE AGENT - BUILDER"
@@ -395,7 +479,8 @@ function Show-Help {
     Write-Host "Available commands:" -ForegroundColor Yellow
     Write-Host "  build     Compiles the solution" -ForegroundColor White
     Write-Host "  test      Runs all tests" -ForegroundColor White
-    Write-Host "  pack      Generates the .addin file for TIA Portal" -ForegroundColor White
+    Write-Host "  pack      Generates the .addin OPC package" -ForegroundColor White
+    Write-Host "  verify    Verifies the .addin package contents" -ForegroundColor White
     Write-Host "  run       Starts the MCP server with simulator" -ForegroundColor White
     Write-Host "  dev       Starts the development host (console)" -ForegroundColor White
     Write-Host "  install   Copies the .addin to TIA Portal folder" -ForegroundColor White
@@ -407,7 +492,7 @@ function Show-Help {
     Write-Host "  .\build.ps1 build          # Compile" -ForegroundColor Gray
     Write-Host "  .\build.ps1 all            # Everything (build+test+pack)" -ForegroundColor Gray
     Write-Host "  .\build.ps1 pack           # Generate .addin" -ForegroundColor Gray
-    Write-Host "  .\build.ps1 run            # Start MCP server" -ForegroundColor Gray
+    Write-Host "  .\build.ps1 verify         # Check .addin contents" -ForegroundColor Gray
     Write-Host "  .\build.ps1 install        # Install to TIA Portal" -ForegroundColor Gray
     Write-Host ""
 }
@@ -420,6 +505,7 @@ switch ($Command) {
     "build"   { Invoke-Build }
     "test"    { Invoke-Test }
     "pack"    { Invoke-Pack }
+    "verify"  { Invoke-Verify }
     "run"     { Invoke-Run }
     "dev"     { Invoke-Dev }
     "clean"   { Invoke-Clean }

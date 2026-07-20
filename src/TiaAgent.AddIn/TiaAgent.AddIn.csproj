@@ -13,28 +13,39 @@
     <ProjectReference Include="..\TiaAgent.OpenCode\TiaAgent.OpenCode.csproj" />
   </ItemGroup>
 
-  <!-- Siemens assemblies — always referenced (TIA provides them at runtime) -->
-  <PropertyGroup>
+  <!-- Define SIEMENS only when TIA Portal assemblies are available -->
+  <PropertyGroup Condition="'$(SiemensAssembliesExist)' == 'true'">
     <DefineConstants>$(DefineConstants);SIEMENS</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(SiemensAssembliesExist)' == 'true'">
     <Reference Include="System.Net.Http" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />
     <Reference Include="System.Xaml" />
+    <!-- Openness assemblies from PublicAPI\V21\net48 -->
     <Reference Include="Siemens.Engineering.Base">
       <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.Base.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Add-In framework assemblies from PublicAPI\V21.AddIn -->
     <Reference Include="Siemens.Engineering.AddIn.Base">
-      <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.AddIn.Base.dll</HintPath>
+      <HintPath>$(TiaAddInApiDir)\Siemens.Engineering.AddIn.Base.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Siemens.Engineering.AddIn.Step7">
-      <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.AddIn.Step7.dll</HintPath>
+      <HintPath>$(TiaAddInApiDir)\Siemens.Engineering.AddIn.Step7.dll</HintPath>
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+
+  <!-- Framework references needed even without Siemens -->
+  <ItemGroup Condition="'$(SiemensAssembliesExist)' != 'true'">
+    <Reference Include="System.Net.Http" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
   </ItemGroup>
 </Project>
