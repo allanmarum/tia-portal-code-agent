@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using TiaAgent.Bridge.Diagnostics;
 using TiaAgent.Bridge.OpenCode;
 using TiaAgent.Contracts.Bridge;
 
@@ -12,13 +13,15 @@ public sealed class TaskManager : IDisposable
     private readonly ConcurrentDictionary<string, TaskEntry> _tasks = new();
     private readonly OpenCodeClient _openCodeClient;
     private readonly int _maxConcurrentTasks;
+    private readonly BridgeLogger _logger;
     private int _runningCount;
     private readonly object _concurrencyLock = new();
 
-    public TaskManager(OpenCodeClient openCodeClient, int maxConcurrentTasks)
+    public TaskManager(OpenCodeClient openCodeClient, int maxConcurrentTasks, BridgeLogger logger)
     {
         _openCodeClient = openCodeClient;
         _maxConcurrentTasks = maxConcurrentTasks;
+        _logger = logger;
     }
 
     public int ActiveTaskCount => Volatile.Read(ref _runningCount);
@@ -82,6 +85,8 @@ public sealed class TaskManager : IDisposable
 
         try
         {
+            _logger.Info($"Task {entry.TaskId}: starting execution (action={entry.Request.Action}, agent={entry.Request.AgentId})");
+
             lock (_concurrencyLock)
             {
                 if (_runningCount >= _maxConcurrentTasks)
@@ -93,6 +98,7 @@ public sealed class TaskManager : IDisposable
                         Message = $"Max concurrent tasks ({_maxConcurrentTasks}) reached",
                         Retryable = true
                     };
+                    _logger.Warn($"Task {entry.TaskId}: rejected — max concurrent tasks reached");
                     return;
                 }
                 _runningCount++;
@@ -102,14 +108,24 @@ public sealed class TaskManager : IDisposable
             entry.Stage = "connecting";
             entry.Message = "Connecting to OpenCode...";
 
-            var projectKey = $"{entry.Request.Project.Id}:{entry.Request.Project.Name}";
+            if (entry.Request.Project == null)
+            {
+                _logger.Warn($"Task {entry.TaskId}: Request.Project is null");
+            }
+            if (entry.Request.Selection == null)
+            {
+                _logger.Warn($"Task {entry.TaskId}: Request.Selection is null");
+            }
+
             var prompt = BuildPrompt(entry.Request);
 
+            _logger.Info($"Task {entry.TaskId}: calling OpenCode CreateSessionAsync");
             var sessionId = await _openCodeClient.CreateSessionAsync(
                 entry.Request.AgentId, prompt, cts.Token).ConfigureAwait(false);
 
             if (!sessionId.Success)
             {
+                _logger.Warn($"Task {entry.TaskId}: OpenCode session creation failed: {sessionId.RawJson}");
                 entry.Status = BridgeTaskStatusValues.Failed;
                 entry.Error = new BridgeError
                 {
@@ -120,14 +136,29 @@ public sealed class TaskManager : IDisposable
                 return;
             }
 
+            _logger.Info($"Task {entry.TaskId}: session created (id={sessionId.SessionId}), sending message");
             entry.Stage = "processing";
             entry.Message = "Agent is processing...";
 
+            if (string.IsNullOrEmpty(sessionId.SessionId))
+            {
+                _logger.Warn($"Task {entry.TaskId}: OpenCode returned null/empty sessionId");
+                entry.Status = BridgeTaskStatusValues.Failed;
+                entry.Error = new BridgeError
+                {
+                    Code = "OPENCODE_SESSION_FAILED",
+                    Message = "OpenCode returned no session ID",
+                    Retryable = true
+                };
+                return;
+            }
+
             var messageResponse = await _openCodeClient.SendMessageAsync(
-                sessionId.SessionId!, entry.Request.UserMessage, cts.Token).ConfigureAwait(false);
+                sessionId.SessionId, entry.Request.UserMessage, cts.Token).ConfigureAwait(false);
 
             if (!messageResponse.Success)
             {
+                _logger.Warn($"Task {entry.TaskId}: OpenCode message failed: {messageResponse.RawJson}");
                 entry.Status = BridgeTaskStatusValues.Failed;
                 entry.Error = new BridgeError
                 {
@@ -138,6 +169,7 @@ public sealed class TaskManager : IDisposable
                 return;
             }
 
+            _logger.Info($"Task {entry.TaskId}: completed successfully");
             entry.Status = BridgeTaskStatusValues.Completed;
             entry.Stage = "completed";
             entry.Response = messageResponse.RawJson;
@@ -145,11 +177,13 @@ public sealed class TaskManager : IDisposable
         }
         catch (OperationCanceledException)
         {
+            _logger.Info($"Task {entry.TaskId}: cancelled");
             entry.Status = BridgeTaskStatusValues.Cancelled;
             entry.Message = "Task was cancelled";
         }
         catch (Exception ex)
         {
+            _logger.Error($"Task {entry.TaskId}: failed with exception", ex);
             entry.Status = BridgeTaskStatusValues.Failed;
             entry.Error = new BridgeError
             {
@@ -175,17 +209,22 @@ public sealed class TaskManager : IDisposable
             _ => request.Action
         };
 
-        return $"""
-            You are a TIA Portal engineering assistant.
-            Action: {action}
-            CorrelationId: {request.CorrelationId}
-            Project: {request.Project.Name} ({request.Project.Id})
-            Selection: {request.Selection.Name} ({request.Selection.ObjectType})
-            PLC: {request.Selection.PlcName}
-            Language: {request.Selection.Language}
+        var projectName = request.Project?.Name ?? "Unknown";
+        var projectId = request.Project?.Id ?? "unknown";
+        var selectionName = request.Selection?.Name ?? "Unknown";
+        var selectionType = request.Selection?.ObjectType ?? "Unknown";
+        var plcName = request.Selection?.PlcName ?? "Unknown";
+        var language = request.Selection?.Language ?? "Unknown";
 
-            User message: {request.UserMessage}
-            """;
+        return $"You are a TIA Portal engineering assistant.\n"
+             + $"Action: {action}\n"
+             + $"CorrelationId: {request.CorrelationId}\n"
+             + $"Project: {projectName} ({projectId})\n"
+             + $"Selection: {selectionName} ({selectionType})\n"
+             + $"PLC: {plcName}\n"
+             + $"Language: {language}\n"
+             + $"\n"
+             + $"User message: {request.UserMessage}";
     }
 
     public void Dispose()

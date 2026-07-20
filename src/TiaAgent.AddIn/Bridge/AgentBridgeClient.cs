@@ -1,8 +1,10 @@
 using System;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using TiaAgent.AddIn.Diagnostics;
 using TiaAgent.Contracts.Bridge;
 
 namespace TiaAgent.AddIn.Bridge;
@@ -26,6 +28,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
             BaseAddress = new Uri(config.BridgeBaseUrl),
             Timeout = TimeSpan.FromSeconds(config.RequestTimeoutSeconds)
         };
+        ConfigureAuthentication(_httpClient, config);
         _ownsHttpClient = true;
     }
 
@@ -33,7 +36,30 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _config = config ?? throw new ArgumentNullException(nameof(config));
+        ConfigureAuthentication(_httpClient, config);
         _ownsHttpClient = false;
+    }
+
+    private void ConfigureAuthentication(HttpClient client, BridgeClientConfig config)
+    {
+        if (!string.IsNullOrEmpty(config.AuthToken))
+        {
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", config.AuthToken);
+            AddInLogger.Info($"Bridge auth configured: Bearer token loaded ({TokenFingerprint(config.AuthToken!)})");
+        }
+        else
+        {
+            AddInLogger.Warn("Bridge auth token not found — requests to Bridge will be rejected");
+        }
+    }
+
+    private static string TokenFingerprint(string token)
+    {
+        if (string.IsNullOrEmpty(token)) return "<empty>";
+        if (token.Length > 8)
+            return string.Format("{0}...{1} ({2} chars)", token.Substring(0, 4), token.Substring(token.Length - 4), token.Length);
+        return string.Format("{0}... ({1} chars)", token.Substring(0, 2), token.Length);
     }
 
     public void Dispose()
@@ -56,7 +82,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
         var json = BuildTaskRequestJson(request);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var response = await _httpClient.PostAsync("/api/tasks", content, cancellationToken).ConfigureAwait(false);
+        var response = await _httpClient.PostAsync("/v1/tasks", content, cancellationToken).ConfigureAwait(false);
         var responseJson = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
@@ -67,7 +93,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
 
     public async Task<BridgeTaskStatus> GetTaskAsync(string taskId, CancellationToken cancellationToken)
     {
-        var response = await _httpClient.GetAsync($"/api/tasks/{taskId}", cancellationToken).ConfigureAwait(false);
+        var response = await _httpClient.GetAsync($"/v1/tasks/{taskId}", cancellationToken).ConfigureAwait(false);
         var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
@@ -78,7 +104,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
 
     public async Task CancelTaskAsync(string taskId, CancellationToken cancellationToken)
     {
-        var response = await _httpClient.DeleteAsync($"/api/tasks/{taskId}", cancellationToken).ConfigureAwait(false);
+        var response = await _httpClient.PostAsync($"/v1/tasks/{taskId}/cancel", null, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }
 

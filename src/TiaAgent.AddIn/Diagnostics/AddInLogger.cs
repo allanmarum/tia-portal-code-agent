@@ -19,6 +19,7 @@ public static class AddInLogger
 
     public static void Info(string message) => Write("INFO", message);
     public static void Warn(string message) => Write("WARN", message);
+    public static void Debug(string message) => Write("DEBUG", message);
     public static void Error(string message, Exception? ex = null)
     {
         var text = ex != null ? $"{message}: {ex.Message}" : message;

@@ -4,17 +4,34 @@
 
 ```text
 TIA Portal Add-In (UI, commands, selection capture)
-  ↓ HTTP (127.0.0.1:43119)
+  ↓ Runtime Discovery (reads runtime.json)
 TiaAgent.Bridge (.NET 8, task management, session management)
-  ↓ HTTP (127.0.0.1:43120)
+  ↓ HTTP (127.0.0.1:43119)
 OpenCode/MiMoCode Agent Runtime (model interaction, tool-calling loop)
-  ↓ stdio (MCP protocol)
+  ↓ HTTP (127.0.0.1:43120)
 Czarnak's tia-mcp (.NET 8 MCP server)
-  ↓ stdin/stdout JSON IPC
+  ↓ stdio (MCP protocol)
 OpennessWorker (.NET 4.8)
   ↓ TIA Portal Openness API
 TIA Portal V21
 ```
+
+### Runtime Supervisor
+
+The Runtime Supervisor orchestrates the startup of Bridge and OpenCode:
+
+```powershell
+# Start all services
+.\src\runtime\Scripts\run.ps1
+
+# Check status
+.\src\runtime\Scripts\status.ps1
+
+# Stop all services
+.\src\runtime\Scripts\stop.ps1
+```
+
+See `docs/RUN.md` for detailed usage.
 
 ### Data Flow (Explain Selected Object)
 

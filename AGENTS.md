@@ -18,16 +18,34 @@ TIA Portal Code Agent — a Siemens TIA Portal V21 Add-In that integrates an AI 
 
 ```text
 Add-In (UI + context capture, net48)
-  → OpenCodeOrchestrator (session/task management)
-    → OpenCode/MiMoCode (AI agent runtime, port 43120)
-      → Czarnak's tia-mcp (stdio MCP server, .NET 8)
-        → OpennessWorker (.NET 4.8)
-          → TIA Portal Openness SDK
+  → Runtime Discovery (reads runtime.json)
+    → Bridge (HTTP, port 43119)
+      → OpenCode/MiMoCode (AI agent runtime, port 43120)
+        → Czarnak's tia-mcp (stdio MCP server, .NET 8)
+          → OpennessWorker (.NET 4.8)
+            → TIA Portal Openness SDK
 ```
 
-This repo contains: **Add-In**, **Application** (orchestrator), **OpenCode** (HTTP client), **Contracts** (DTOs, errors, interfaces).
+This repo contains: **Add-In**, **Application** (orchestrator), **OpenCode** (HTTP client), **Contracts** (DTOs, errors, interfaces), **Runtime Supervisor** (PowerShell scripts for service lifecycle).
 
 MCP and Openness are delegated to Czarnak's `TiaMcpServer` — do not duplicate TIA access.
+
+## Runtime Supervisor
+
+The Runtime Supervisor orchestrates service startup, monitoring, and shutdown:
+
+```powershell
+# Start all services
+.\src\runtime\Scripts\run.ps1
+
+# Check status
+.\src\runtime\Scripts\status.ps1
+
+# Stop all services
+.\src\runtime\Scripts\stop.ps1
+```
+
+See `docs/RUN.md` for detailed usage and `docs/spec/ARCHITECTURE.md` section 30 for the architectural specification.
 
 See `docs/spec/ARCHITECTURE.md` for the full architecture contract.
 

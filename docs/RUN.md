@@ -11,14 +11,11 @@ cd C:\github\tia-portal-code-agent
 .\build.ps1 all
 .\build.ps1 install
 
-# 2. Start TiaAgent.Bridge (port 43119)
-dotnet run --project src/TiaAgent.Bridge --configuration Release
+# 2. Start all services with Runtime Supervisor
+.\src\runtime\Scripts\run.ps1
 
-# 3. Start MiMoCode agent server (port 43120)
-node C:\nvm4w\nodejs\node_modules\@mimo-ai\cli\bin\mimo serve --port 43120
-
-# 4. In TIA Portal: Options > Settings > Add-Ins > activate "TIA Portal Code Agent"
-# 5. Right-click a PLC block > AI Assistant > Explain selected object
+# 3. In TIA Portal: Options > Settings > Add-Ins > activate "TIA Portal Code Agent"
+# 4. Right-click a PLC block > AI Assistant > Explain selected object
 ```
 
 ## Prerequisites
@@ -49,7 +46,7 @@ cd C:\github\tia-portal-code-agent
 
 Expected output:
 - Build: 0 errors
-- Tests: 14 architecture tests passed
+- Tests: All tests passed
 - Pack: `artifacts\TiaAgent-0-1-0.addin` created
 
 ## Step 2: Install the Add-In
@@ -77,77 +74,69 @@ tia-mcp doctor
 
 `tia-mcp` uses **stdio transport** -- it's launched automatically by the agent runtime when MCP tools are called. No separate process needed.
 
-## Step 4: Start TiaAgent.Bridge
+## Step 4: Start All Services
 
-The Add-In communicates with the Bridge on port 43119. The Bridge forwards requests to OpenCode.
+### Option A: Runtime Supervisor (Recommended)
+
+The Runtime Supervisor starts and manages all services (Bridge + OpenCode) with a single command:
 
 ```powershell
+.\src\runtime\Scripts\run.ps1
+```
+
+This will:
+1. Validate prerequisites
+2. Allocate ports (Bridge: 43119, OpenCode: 43120)
+3. Start the Bridge process
+4. Start the OpenCode process
+5. Monitor service health
+6. Publish a runtime manifest for service discovery
+
+**Available commands:**
+
+```powershell
+# Start and monitor all services
+.\src\runtime\Scripts\run.ps1
+
+# Check runtime status
+.\src\runtime\Scripts\status.ps1
+
+# JSON status for automation
+.\src\runtime\Scripts\status.ps1 -Json
+
+# Stop all services gracefully
+.\src\runtime\Scripts\stop.ps1
+
+# Force stop (skip graceful shutdown)
+.\src\runtime\Scripts\stop.ps1 -Force
+```
+
+**Runtime Directory:**
+
+All runtime data is stored in `%LOCALAPPDATA%\TiaAgent\`:
+
+```
+%LOCALAPPDATA%\TiaAgent\
+├── config\settings.json    # Supervisor configuration
+├── runtime\runtime.json    # Service discovery manifest
+├── runtime\secrets\        # Transient credentials
+├── logs\                   # Service logs
+└── scripts\                # Runtime scripts
+```
+
+### Option B: Manual Startup (Legacy)
+
+If you need to start services individually:
+
+```powershell
+# Start TiaAgent.Bridge (port 43119)
 dotnet run --project src/TiaAgent.Bridge --configuration Release
-```
 
-Verify it's running:
-```powershell
-netstat -ano | Select-String ":43119"
-# Should show: TCP 127.0.0.1:43119 ... LISTENING
-```
-
-The Bridge stores its auth token at `%LOCALAPPDATA%\TiaAgent\bridge.token`. Check the log at `%LOCALAPPDATA%\TiaAgent\bridge.log`.
-
-## Step 5: Start the Agent Runtime (MiMoCode)
-
-The Bridge connects to the agent runtime via HTTP on port 43120. The agent runtime launches `tia-mcp` via stdio when it needs to call MCP tools.
-
-### Option A: Start MiMoCode as a headless server (recommended for E2E)
-
-```powershell
-# Run from the project directory
+# Start MiMoCode agent server (port 43120)
 node C:\nvm4w\nodejs\node_modules\@mimo-ai\cli\bin\mimo serve --port 43120
 ```
 
-**Important:** Do NOT use `Start-Process -FilePath "mimo"` -- the `.ps1` wrapper opens in Notepad on Windows. Always run via `node` directly.
-
-Verify it's running:
-```powershell
-netstat -ano | Select-String ":43120"
-# Should show: TCP 127.0.0.1:43120 ... LISTENING
-```
-
-### Option B: Use MiMoCode TUI (interactive)
-
-```powershell
-mimo
-```
-
-This opens the TUI. The MCP config in `config/opencode.json` is used automatically.
-
-### MCP Configuration
-
-The agent runtime reads `config/opencode.json`:
-
-```json
-{
-  "server": { "port": 43120 },
-  "mcp": {
-    "tia-portal": {
-      "type": "local",
-      "command": ["tia-mcp"],
-      "enabled": true
-    }
-  },
-  "agents": {
-    "default": "tia-explain",
-    "available": ["tia-explain", "tia-review", "tia-change"]
-  },
-  "model": {
-    "provider": "openai",
-    "model": "gpt-4o"
-  }
-}
-```
-
-The agent runtime spawns `tia-mcp` as a child process via stdio -- no separate MCP server process needed.
-
-## Step 6: Activate the Add-In in TIA Portal
+## Step 5: Activate the Add-In in TIA Portal
 
 1. Open TIA Portal V21
 2. Open a project with a PLC
@@ -155,7 +144,7 @@ The agent runtime spawns `tia-mcp` as a child process via stdio -- no separate M
 4. Enable **"TIA Portal Code Agent"**
 5. Confirm any permission prompts
 
-## Step 7: Use It
+## Step 6: Use It
 
 Right-click any object in the project tree:
 
@@ -165,14 +154,36 @@ Right-click any object in the project tree:
 
 The Add-In sends the task to the Bridge (port 43119), which forwards it to MiMoCode (port 43120). MiMoCode launches `tia-mcp` to read from TIA Portal via Openness.
 
+## Service Discovery
+
+The Add-In discovers services via the runtime manifest:
+
+1. Reads `%LOCALAPPDATA%\TiaAgent\runtime\runtime.json`
+2. Validates the schema version and status
+3. Calls the service's health endpoint before use
+
+**Important:** `runtime.json` is discovery metadata, not proof of service health. Always validate the health endpoint.
+
 ## Troubleshooting
+
+### Runtime Supervisor
+
+Check if the runtime is running:
+```powershell
+.\src\runtime\Scripts\status.ps1
+```
+
+View supervisor logs:
+```powershell
+Get-Content "$env:LOCALAPPDATA\TiaAgent\logs\supervisor.log" -Tail 50
+```
 
 ### Bridge not running
 
-The Add-In requires TiaAgent.Bridge to be running on port 43119. If you see "The local TIA Agent Bridge is not running", start it:
+The Add-In requires TiaAgent.Bridge to be running on port 43119. If you see "The local TIA Agent Bridge is not running", start the supervisor:
 
 ```powershell
-dotnet run --project src/TiaAgent.Bridge --configuration Release
+.\src\runtime\Scripts\run.ps1
 ```
 
 ### Add-In not showing in TIA Portal
@@ -188,14 +199,16 @@ netstat -ano | Select-String ":43119"
 # Kill the process using that port
 ```
 
+The Runtime Supervisor will automatically allocate a different port from the configured range (43100-43200).
+
 ### Port 43120 already in use (OpenCode)
 
 ```powershell
 netstat -ano | Select-String ":43120"
-# Kill the process using that port, or use a different port:
-node ... mimo serve --port 43121
-# Then update config/opencode.json server.port to 43121
+# Kill the process using that port
 ```
+
+The Runtime Supervisor will automatically allocate a different port.
 
 ### tia-mcp fails to connect to TIA Portal
 
@@ -211,24 +224,29 @@ Common issues:
 
 ### Agent not responding
 
-Check if Bridge is running:
+Check if services are healthy:
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:43119/health" -Headers @{Authorization="Bearer $(Get-Content $env:LOCALAPPDATA\TiaAgent\bridge.token)"}
+# Check Bridge health
+Invoke-RestMethod -Uri "http://127.0.0.1:43119/health"
+
+# Check OpenCode health
+Invoke-RestMethod -Uri "http://127.0.0.1:43120/health"
 ```
 
-Check if MiMoCode server is running:
+If services are down, restart the supervisor:
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:43120/" -Method Get
+.\src\runtime\Scripts\stop.ps1
+.\src\runtime\Scripts\run.ps1
 ```
-
-If the server is down, restart it (see Step 4).
 
 ## Logs
 
 | Log | Path | Contents |
 |---|---|---|
+| Supervisor log | `%LOCALAPPDATA%\TiaAgent\logs\supervisor.log` | Startup, shutdown, health checks, errors |
 | Add-In log | `%LOCALAPPDATA%\TiaAgent\addin.log` | Action triggers, Bridge client calls, results |
-| Bridge log | `%LOCALAPPDATA%\TiaAgent\bridge.log` | Task lifecycle, OpenCode calls, errors |
+| Bridge log | `%LOCALAPPDATA%\TiaAgent\logs\bridge.log` | Task lifecycle, OpenCode calls, errors |
+| OpenCode log | `%LOCALAPPDATA%\TiaAgent\logs\opencode.log` | Agent runtime, model interaction |
 
 ## Architecture Flow
 
@@ -259,10 +277,14 @@ Add-In displays result in AssistantPanel or popup
 | File | Purpose |
 |---|---|
 | `build.ps1` | Build, test, pack, install commands |
-| `TiaAgent.sln` | Solution with 5 source + 3 test projects |
-| `config/opencode.json` | Agent runtime + MCP configuration |
-| `config/bridge.example.json` | Bridge configuration example |
-| `agents/tia-explain.md` | Read-only agent profile |
-| `agents/tia-review.md` | Review agent profile |
-| `agents/tia-change.md` | Change agent profile |
-| `docs/spec/ARCHITECTURE.md` | Authoritative architecture contract |
+| `TiaAgent.sln` | Solution with 5 source + 4 test projects |
+| `src\runtime\Scripts\run.ps1` | Runtime Supervisor - start all services |
+| `src\runtime\Scripts\stop.ps1` | Runtime Supervisor - stop all services |
+| `src\runtime\Scripts\status.ps1` | Runtime Supervisor - check status |
+| `config\opencode.json` | Agent runtime + MCP configuration |
+| `config\settings.example.json` | Supervisor settings template |
+| `config\bridge.example.json` | Bridge configuration example |
+| `agents\tia-explain.md` | Read-only agent profile |
+| `agents\tia-review.md` | Review agent profile |
+| `agents\tia-change.md` | Change agent profile |
+| `docs\spec\ARCHITECTURE.md` | Authoritative architecture contract |

@@ -22,6 +22,8 @@ The product must combine:
 
 A TIA Portal Add-In provides the user-facing entry point and captures the selected engineering context. A single Openness application service implements all project access. An optional MCP interface exposes approved capabilities to an external agent runtime. The Add-In displays results and controls approvals.
 
+The Runtime Supervisor orchestrates the local development runtime, managing service lifecycle, port allocation, and health monitoring.
+
 ## 3. Primary users
 
 ### Automation engineer

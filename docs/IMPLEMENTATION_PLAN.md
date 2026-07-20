@@ -7,6 +7,8 @@
 
 > **Note (2026-07-20):** This plan originally proposed building a custom MCP server (`TiaAgent.Mcp`, `TiaAgent.McpHost`), Openness adapter (`TiaAgent.Openness`), and simulator (`TiaAgent.Simulator`). These have been replaced by Czarnak's maintained `TiaMcpServer` (stdio transport, batch operations, write safety tokens). The remaining codebase contains only: Add-In, Application (orchestrator), Contracts, and OpenCode (HTTP client). See `README.md` for the current architecture.
 
+> **Note (2026-07-20):** A Runtime Supervisor has been implemented to orchestrate service startup, monitoring, and shutdown. See `docs/RUN.md` for usage instructions and `docs/spec/ARCHITECTURE.md` section 30 for the architectural specification. The supervisor provides `run.ps1`, `stop.ps1`, and `status.ps1` scripts for managing the local development runtime.
+
 ---
 
 ## 1. Target Framework Decision Matrix
