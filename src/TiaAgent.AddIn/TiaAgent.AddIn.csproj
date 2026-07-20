@@ -8,9 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TiaAgent.Application\TiaAgent.Application.csproj" />
     <ProjectReference Include="..\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
-    <ProjectReference Include="..\TiaAgent.OpenCode\TiaAgent.OpenCode.csproj" />
   </ItemGroup>
 
   <!-- Define SIEMENS only when TIA Portal assemblies are available -->

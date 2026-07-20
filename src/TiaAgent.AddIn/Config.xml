@@ -21,12 +21,6 @@
     <AssemblyInfo>
       <Assembly>TiaAgent.Contracts.dll</Assembly>
     </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>TiaAgent.Application.dll</Assembly>
-    </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>TiaAgent.OpenCode.dll</Assembly>
-    </AssemblyInfo>
   </AdditionalAssemblies>
 
   <RequiredPermissions>
