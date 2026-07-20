@@ -35,6 +35,19 @@ $Config = "Release"
 $Version = "0.1.0"
 
 # ============================================================
+# Auto-detect TIA Portal V21 assemblies
+# ============================================================
+if (-not $env:SiemensAssembliesExist) {
+    $tiaPath = "C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21"
+    $net48Path = "$tiaPath\net48"
+    if (Test-Path "$net48Path\Siemens.Engineering.AddIn.Base.dll") {
+        $env:SiemensAssembliesExist = "true"
+        $env:TiaPublicApiDir = $tiaPath
+        Write-Host "  TIA Portal V21 detected: $tiaPath" -ForegroundColor Gray
+    }
+}
+
+# ============================================================
 # Helper functions
 # ============================================================
 
@@ -142,43 +155,63 @@ function Invoke-Pack {
     }
     Write-Ok "Dependencies copied"
     
-    # Generate Config.xml
+    # Generate Config.xml (V21 Publisher schema)
     Write-Step 4 6 "Generating Config.xml..."
     $configXml = @"
 <?xml version="1.0" encoding="utf-8"?>
-<Configuration
-    xmlns="http://www.siemens.com/simatic-automation/addin/configuration"
-    Version="1.0">
-  <Identity>
+<PackageConfiguration xmlns="http://www.siemens.com/automation/Openness/AddIn/Publisher/V21">
+  <Author>TIA Agent Project</Author>
+  <Description>AI-powered engineering assistant for TIA Portal V21</Description>
+  <AddInVersion>$Version</AddInVersion>
+  <Product>
     <Name>TIA Portal Code Agent</Name>
-    <Description>AI-powered engineering assistant for TIA Portal V21</Description>
-    <Vendor>TIA Agent Project</Vendor>
-    <Version>$Version</Version>
-  </Identity>
-  <Runtime>
-    <TargetPlatform>TIA Portal V21</TargetPlatform>
-    <TargetFramework>.NET Framework 4.8</TargetFramework>
-    <Architecture>x64</Architecture>
-  </Runtime>
-  <Permissions>
-    <Permission Type="TIA" Level="Restricted" />
-    <Permission Type="Security" Level="Restricted" />
-  </Permissions>
-  <EntryPoint>
-    <Assembly>TiaAgent.AddIn.dll</Assembly>
-    <Type>TiaAgent.AddIn.Bootstrap</Type>
-  </EntryPoint>
-</Configuration>
+    <Id>tia-portal-code-agent</Id>
+    <Version>$Version.0</Version>
+  </Product>
+  <FeatureAssembly>
+    <AssemblyInfo>
+      <Assembly>TiaAgent.AddIn.dll</Assembly>
+    </AssemblyInfo>
+  </FeatureAssembly>
+  <AdditionalAssemblies>
+    <AssemblyInfo>
+      <Assembly>TiaAgent.Contracts.dll</Assembly>
+    </AssemblyInfo>
+    <AssemblyInfo>
+      <Assembly>TiaAgent.Application.dll</Assembly>
+    </AssemblyInfo>
+    <AssemblyInfo>
+      <Assembly>TiaAgent.Simulator.dll</Assembly>
+    </AssemblyInfo>
+    <AssemblyInfo>
+      <Assembly>TiaAgent.OpenCode.dll</Assembly>
+    </AssemblyInfo>
+  </AdditionalAssemblies>
+  <RequiredPermissions>
+    <TIAPermissions>
+      <TIA.ReadOnly />
+    </TIAPermissions>
+  </RequiredPermissions>
+</PackageConfiguration>
 "@
     $configXml | Out-File -FilePath "$addinDir\Config.xml" -Encoding UTF8
     Write-Ok "Config.xml generated"
     
-    # Create .addin file (renamed zip)
-    Write-Step 5 6 "Creating .addin file..."
-    $tempZip = "$packDir\temp.zip"
-    Compress-Archive -Path "$addinDir\*" -DestinationPath $tempZip -Force
-    Move-Item $tempZip $addinFile -Force
-    Write-Ok ".addin file created: $addinFile"
+    # Run Siemens Publisher to create OPC .addin package
+    Write-Step 5 6 "Running Siemens Publisher..."
+    $publisher = "C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe"
+    if (Test-Path $publisher) {
+        & $publisher --configuration "$addinDir\Config.xml" --outfile $addinFile --console 2>&1 | ForEach-Object { Write-Info $_ }
+        if ($LASTEXITCODE -ne 0) { Write-Fail "Publisher failed"; exit 1 }
+        Write-Ok ".addin file created: $addinFile"
+    } else {
+        Write-Fail "Publisher not found: $publisher"
+        Write-Info "Falling back to ZIP packaging (will not work in TIA Portal)"
+        $tempZip = "$packDir\temp.zip"
+        Compress-Archive -Path "$addinDir\*" -DestinationPath $tempZip -Force
+        Move-Item $tempZip $addinFile -Force
+        Write-Ok ".addin file created (ZIP fallback): $addinFile"
+    }
     
     # Summary
     Write-Step 6 6 "Package summary..."
@@ -272,7 +305,7 @@ function Invoke-Clean {
 function Invoke-Install {
     Write-Header "INSTALL TO TIA PORTAL"
     
-    $userAddIns = "$env:APPDATA\Siemens\Automation\Portal V21\UserAddIns\AddIns"
+    $userAddIns = "$env:APPDATA\Siemens\Automation\Portal V21\UserAddIns"
     
     if (!(Test-Path $userAddIns)) {
         Write-Fail "Add-Ins folder not found: $userAddIns"

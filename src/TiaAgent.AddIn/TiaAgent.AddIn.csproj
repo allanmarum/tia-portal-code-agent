@@ -12,18 +12,22 @@
     <ProjectReference Include="..\TiaAgent.OpenCode\TiaAgent.OpenCode.csproj" />
   </ItemGroup>
 
-  <!-- Siemens assemblies for Add-In providers -->
+  <!-- Siemens assemblies for Add-In providers — define SIEMENS for conditional compilation -->
+  <PropertyGroup Condition="'$(SiemensAssembliesExist)' == 'true'">
+    <DefineConstants>$(DefineConstants);SIEMENS</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup Condition="'$(SiemensAssembliesExist)' == 'true'">
     <Reference Include="Siemens.Engineering.Base">
-      <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.Base.dll</HintPath>
+      <HintPath>$(TiaPublicApiDir)\net48\Siemens.Engineering.Base.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Siemens.Engineering.AddIn.Base">
-      <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.AddIn.Base.dll</HintPath>
+      <HintPath>$(TiaPublicApiDir)\net48\Siemens.Engineering.AddIn.Base.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Siemens.Engineering.AddIn.Step7">
-      <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.AddIn.Step7.dll</HintPath>
+      <HintPath>$(TiaPublicApiDir)\net48\Siemens.Engineering.AddIn.Step7.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
