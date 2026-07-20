@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+using System.Runtime.Serialization;
 
 namespace TiaAgent.Contracts.Errors;
 
@@ -15,7 +15,7 @@ public class TiaError
     public Dictionary<string, object>? Details { get; init; }
     public string? Remediation { get; init; }
 
-    [JsonIgnore]
+    [IgnoreDataMember]
     public Exception? InternalException { get; init; }
 
     public static TiaError NotFound(string message, string? correlationId = null) => new()

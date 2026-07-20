@@ -1,0 +1,7 @@
+{
+  "port": 43119,
+  "openCodeBaseUrl": "http://127.0.0.1:43120",
+  "taskTimeoutSeconds": 300,
+  "maxConcurrentTasks": 5,
+  "maxRequestBodyBytes": 1048576
+}

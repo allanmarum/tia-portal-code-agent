@@ -61,65 +61,59 @@ public class MockOpenCodeClient : IOpenCodeClient
         });
     }
 
-    public async IAsyncEnumerable<OpenCodeEventDto> WatchTaskAsync(
+    public async Task<IReadOnlyList<OpenCodeEventDto>> GetTaskEventsAsync(
         string taskId,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        CancellationToken cancellationToken)
     {
         if (DelayMs > 0)
         {
-            try
-            {
-                await Task.Delay(DelayMs, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                yield break;
-            }
+            await Task.Delay(DelayMs, cancellationToken);
         }
 
         if (SimulateFailure)
         {
-            yield return new OpenCodeEventDto
+            return new List<OpenCodeEventDto>
             {
-                EventType = "failed",
-                TaskId = taskId,
-                Message = "Simulated task failure",
-                Timestamp = DateTimeOffset.UtcNow
+                new OpenCodeEventDto
+                {
+                    EventType = "failed",
+                    TaskId = taskId,
+                    Message = "Simulated task failure",
+                    Timestamp = DateTimeOffset.UtcNow
+                }
             };
-            yield break;
         }
 
-        // Simulate tool call events
-        yield return new OpenCodeEventDto
+        return new List<OpenCodeEventDto>
         {
-            EventType = "tool_call",
-            TaskId = taskId,
-            Message = "Calling tia_get_current_context",
-            Timestamp = DateTimeOffset.UtcNow
-        };
-
-        yield return new OpenCodeEventDto
-        {
-            EventType = "tool_call",
-            TaskId = taskId,
-            Message = "Calling tia_read_block",
-            Timestamp = DateTimeOffset.UtcNow
-        };
-
-        yield return new OpenCodeEventDto
-        {
-            EventType = "progress",
-            TaskId = taskId,
-            Message = "Analysis in progress...",
-            Timestamp = DateTimeOffset.UtcNow
-        };
-
-        yield return new OpenCodeEventDto
-        {
-            EventType = "completed",
-            TaskId = taskId,
-            Message = "Task completed successfully",
-            Timestamp = DateTimeOffset.UtcNow
+            new OpenCodeEventDto
+            {
+                EventType = "tool_call",
+                TaskId = taskId,
+                Message = "Calling tia_get_current_context",
+                Timestamp = DateTimeOffset.UtcNow
+            },
+            new OpenCodeEventDto
+            {
+                EventType = "tool_call",
+                TaskId = taskId,
+                Message = "Calling tia_read_block",
+                Timestamp = DateTimeOffset.UtcNow
+            },
+            new OpenCodeEventDto
+            {
+                EventType = "progress",
+                TaskId = taskId,
+                Message = "Analysis in progress...",
+                Timestamp = DateTimeOffset.UtcNow
+            },
+            new OpenCodeEventDto
+            {
+                EventType = "completed",
+                TaskId = taskId,
+                Message = "Task completed successfully",
+                Timestamp = DateTimeOffset.UtcNow
+            }
         };
     }
 

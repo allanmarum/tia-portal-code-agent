@@ -2,7 +2,7 @@
 
 An AI-powered engineering assistant integrated into Siemens TIA Portal through an Add-In, enabling contextual explanations, code review, dependency analysis, and controlled change proposals — all driven by a coding-agent runtime via the Model Context Protocol (MCP).
 
-> **Status:** Functional. Add-In loads in TIA Portal V21, context menus work, MCP server connects to live projects.
+> **Status:** Functional. Add-In loads in TIA Portal V21, Bridge architecture implemented, context menus work, MCP server connects via Bridge.
 
 ## Table of Contents
 
@@ -42,17 +42,17 @@ The user invokes an action from the TIA Portal context menu. The Add-In captures
 ## Architecture
 
 ```
-User → TIA Portal → Add-In → OpenCode Agent → stdio MCP → Czarnak tia-mcp → OpennessWorker → TIA Portal Openness
+User → TIA Portal → Add-In → TiaAgent.Bridge → OpenCode Agent → stdio MCP → Czarnak tia-mcp → OpennessWorker → TIA Portal Openness
 ```
 
 ### Layers
 
 | Project | Responsibility |
 |---|---|
-| `TiaAgent.AddIn` | Contextual commands, selection capture, result/progress UI, lifecycle management |
-| `TiaAgent.Application` | OpenCode orchestrator — session/task management, event streaming |
+| `TiaAgent.AddIn` | Contextual commands, selection capture, result/progress UI, Bridge client |
+| `TiaAgent.Bridge` | Local HTTP API, task/session management, OpenCode client, process management |
 | `TiaAgent.Contracts` | Stable DTOs, interfaces, error codes, events — no Siemens types |
-| `TiaAgent.OpenCode` | HTTP client for OpenCode/MiMoCode agent runtime |
+| `TiaAgent.OpenCode` | HTTP client for OpenCode/MiMoCode agent runtime (used by Bridge only) |
 
 ### External Components (not in this repo)
 
@@ -146,11 +146,10 @@ The following are explicitly out of scope for the MVP:
 ### Trust Boundaries
 
 ```
-TIA Portal process (Add-In + Application)  — trusted local boundary
-OpenCode agent runtime (port 43120)         — local HTTP, loopback only
-Czarnak tia-mcp (stdio)                     — child process, no network
-Agent runtime and model                     — untrusted reasoning boundary
-Project content                             — untrusted data boundary
+TIA Portal process (Add-In)               — trusted local boundary
+TiaAgent.Bridge (port 43119)              — local HTTP, loopback only, bearer token auth
+OpenCode agent runtime (port 43120)       — local HTTP, loopback only
+Czarnak tia-mcp (stdio)                   — child process, no network
 ```
 
 ### Key Principles
@@ -180,8 +179,8 @@ tia-portal-code-agent/
 ├── TiaAgent.sln                   # Solution file
 ├── build.ps1                      # Build/test/pack orchestrator
 ├── src/
-│   ├── TiaAgent.AddIn/            # TIA Portal Add-In (UI, commands, bootstrap)
-│   ├── TiaAgent.Application/      # OpenCode orchestrator, common utilities
+│   ├── TiaAgent.AddIn/            # TIA Portal Add-In (UI, commands, Bridge client)
+│   ├── TiaAgent.Bridge/           # Local HTTP API, task/session management, OpenCode client
 │   ├── TiaAgent.Contracts/        # DTOs, interfaces, errors, events
 │   └── TiaAgent.OpenCode/         # OpenCode HTTP client
 ├── tests/
@@ -194,7 +193,8 @@ tia-portal-code-agent/
 │   └── tia-change.md              # Change agent (reads + preview + apply)
 ├── config/
 │   ├── opencode.json              # OpenCode + MCP server config
-│   └── opencode.example.json
+│   ├── opencode.example.json
+│   └── bridge.example.json        # Bridge configuration example
 └── docs/
     ├── spec/                      # Authoritative specifications
     │   ├── ARCHITECTURE.md
@@ -263,7 +263,7 @@ npx -y @modelcontextprotocol/inspector --cli tia-mcp --method tools/call --tool-
 
 ### Solution Layout
 
-The solution contains 4 source projects and 3 test projects. MCP and Openness access are delegated to Czarnak's `TiaMcpServer` — this repo contains only the Add-In, orchestrator, and OpenCode client.
+The solution contains 4 source projects and 3 test projects (14 architecture tests). MCP and Openness access are delegated to Czarnak's `TiaMcpServer` — this repo contains only the Add-In, Bridge, and OpenCode client.
 
 ### Key Rules
 

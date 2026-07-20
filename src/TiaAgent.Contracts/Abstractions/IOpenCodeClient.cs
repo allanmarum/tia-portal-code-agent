@@ -7,7 +7,7 @@ public interface IOpenCodeClient
 {
     Task<OpenCodeSessionDto> CreateSessionAsync(CreateOpenCodeSessionRequest request, CancellationToken cancellationToken);
     Task<OpenCodeTaskDto> StartTaskAsync(StartOpenCodeTaskRequest request, CancellationToken cancellationToken);
-    IAsyncEnumerable<OpenCodeEventDto> WatchTaskAsync(string taskId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<OpenCodeEventDto>> GetTaskEventsAsync(string taskId, CancellationToken cancellationToken);
     Task CancelTaskAsync(string taskId, CancellationToken cancellationToken);
     Task<bool> HealthCheckAsync(CancellationToken cancellationToken);
 }

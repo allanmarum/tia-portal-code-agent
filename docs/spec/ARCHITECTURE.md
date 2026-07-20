@@ -122,35 +122,41 @@ OpenCode = brain, session, planning, and model integration
 
 For the proof of concept and first version:
 
-```mermaid
-flowchart LR
-    U[User] --> TIA[TIA Portal]
-    TIA --> ADDIN[TIA Add-In]
-    ADDIN -->|starts task| OC[OpenCode Server]
-    OC -->|MCP Streamable HTTP| ADDIN
-    ADDIN --> APP[Application Services]
-    APP --> SVC[ITiaProjectService]
-    SVC --> OPENNESS[TIA Portal Openness]
-    OPENNESS --> PROJECT[Open project]
-```
-
-Distribution:
-
 ```text
-TIA Portal process
-└── Add-In
-    ├── contextual commands
-    ├── result/progress UI
-    ├── application services
-    ├── ITiaProjectService implementation
-    ├── Openness adapter
-    └── local MCP endpoint
-
-OpenCode process
-├── conversation/session
-├── agent loop
-├── model provider
+TIA Portal V21
+└── TIA Agent Add-In (.NET Framework 4.8)
+    ├── Context-menu actions
+    ├── Selection capture
+    ├── Local assistant UI
+    └── Minimal Bridge client
+            │
+            │ HTTP over 127.0.0.1:43119
+            ▼
+TiaAgent.Bridge.exe (.NET 8)
+├── Local HTTP API
+├── Task and session management
+├── OpenCode HTTP client
+├── Event and response translation
+├── Bearer token authentication
+├── Cancellation support
+└── Diagnostics endpoint
+            │
+            │ OpenCode HTTP API
+            ▼
+OpenCode Server (port 43120)
+├── Agent runtime
+├── Model interaction
+├── Session management
+├── Tool-calling loop
 └── MCP client
+            │
+            │ stdio
+            ▼
+Czarnak/tia-portal-mcp
+└── OpennessWorker (.NET Framework 4.8)
+        │
+        ▼
+TIA Portal Openness API
 ```
 
 ### 3.2 Robust architecture
@@ -206,7 +212,8 @@ Responsible for:
 - starting tasks in the agent runtime;
 - displaying progress, results, diff, and approval;
 - allowing cancellation;
-- hosting MCP in the MVP or IPC in the robust architecture;
+- communicating with TiaAgent.Bridge via HTTP;
+- capturing selection snapshots for the Bridge;
 - integrating application services into the TIA host;
 - conforming to the `.addin` package structure, `Config.xml` schema, and deployment model defined in `ADDIN_TECHNICAL_SPEC.md`.
 
@@ -333,33 +340,28 @@ Must not contain TIA project logic.
 Permitted dependencies:
 
 ```text
-AddIn ────────────────> Application
+AddIn ────────────────> Bridge client (via IAgentBridgeClient)
 AddIn ────────────────> Contracts
-AddIn ────────────────> OpenCode client
-AddIn ────────────────> MCP host/bootstrap
 
-Mcp ──────────────────> Application
-Mcp ──────────────────> Contracts
+Bridge ───────────────> Application
+Bridge ───────────────> Contracts
+Bridge ───────────────> OpenCode
 
 Application ──────────> Contracts
 
-Openness ─────────────> Application abstractions
-Openness ─────────────> Contracts
-Openness ─────────────> Siemens Openness SDK
+OpenCode ─────────────> Contracts
 
-McpHost optional ─────> Contracts
-McpHost optional ─────> IPC client
+MCP (Czarnak) ────────> Openness SDK (external)
 ```
 
-Prohibited dependencies:
+Prohibited:
 
 ```text
-Application ─X─> AddIn
-Application ─X─> MCP
-Application ─X─> OpenCode
-Contracts   ─X─> Siemens Openness SDK
-McpHost     ─X─> Siemens Openness SDK
-OpenCode    ─X─> Siemens Openness SDK
+AddIn ─X─> Application
+AddIn ─X─> OpenCode
+AddIn ─X─> Microsoft.Extensions.*
+AddIn ─X─> System.Text.Json
+AddIn ─X─> Microsoft.Bcl.AsyncInterfaces
 ```
 
 The agent must reject any change that introduces a cycle between projects.
@@ -1280,6 +1282,13 @@ TiaAgent.sln
 │   │   ├── Bootstrap/
 │   │   └── OpenCode/
 │   │
+│   ├── TiaAgent.Bridge/
+│   │   ├── Api/
+│   │   ├── Session/
+│   │   ├── Translation/
+│   │   ├── OpenCodeClient/
+│   │   └── Diagnostics/
+│   │
 │   ├── TiaAgent.Application/
 │   │   ├── Abstractions/
 │   │   ├── Context/
@@ -1681,49 +1690,22 @@ Do not implement in the MVP:
 
 ## 28. Summary of the central decision
 
-The Add-In may host the MCP server in the MVP.
+The Add-In communicates with TiaAgent.Bridge via HTTP, which orchestrates OpenCode and MCP.
 
 ```text
-OpenCode
-   │
-   │ MCP
-   ▼
-TIA Portal Add-In
-   │
-   │ Application services
-   ▼
-ITiaProjectService
-   │
-   ▼
-TIA Portal Openness
-```
-
-The same Add-In can start a task in OpenCode:
-
-```text
-User
-   ↓
-Contextual command
-   ↓
-Add-In
-   ↓
-OpenCode Agent
-   ↓ MCP
-Add-In
-   ↓
-Openness
+Add-In → Bridge → OpenCode → MCP/Add-In → Openness
 ```
 
 This does not represent duplication.
 
 ```text
-Add-In → OpenCode
+Add-In → Bridge
 ```
 
 starts the reasoning.
 
 ```text
-OpenCode → MCP/Add-In
+Bridge → OpenCode → MCP/Add-In
 ```
 
 reads or modifies real project data.

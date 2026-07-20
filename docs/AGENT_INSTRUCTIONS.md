@@ -50,16 +50,21 @@ Or step by step:
 .\build.ps1 install  # Copy to UserAddIns
 ```
 
+## Bridge Startup
+
+```powershell
+# Start the Bridge (required for AI Assistant actions)
+dotnet run --project src/TiaAgent.Bridge --configuration Release
+```
+
 ## How Packaging Works (CRITICAL)
 
-The packaging uses a **3-step hybrid approach** — this is the ONLY method that produces a .addin TIA Portal loads:
+The packaging uses a **2-step approach** — this is the ONLY method that produces a .addin TIA Portal loads:
 
 1. **Siemens Publisher.exe** creates the base OPC package from `Config.xml`
-2. **Inject transitive NuGet deps** into `LocalAssemblyCache/` using `System.IO.Packaging`
-3. **Sign with OpcSigner** (self-signed certificate)
+2. **Sign with OpcSigner** (self-signed certificate)
 
-Do NOT use manual `System.IO.Packaging`-only — TIA Portal rejects those packages.
-Do NOT use Publisher-only — it misses transitive deps (System.Text.Json, etc.).
+The Add-In now only requires `TiaAgent.AddIn.dll` and `TiaAgent.Contracts.dll` — no transitive NuGet dependencies are injected.
 
 ## Verification
 
@@ -86,14 +91,16 @@ Do NOT use Publisher-only — it misses transitive deps (System.Text.Json, etc.)
 
 ```
 User right-clicks block in TIA Portal
-  → ProjectTreeProvider captures object name/type
-  → OpenCodeOrchestrator.ExecuteTaskAsync (background thread)
-    → HTTP POST to OpenCode (port 43120)
-      → OpenCode spawns tia-mcp (stdio child process)
-        → tia-mcp attaches to running TIA Portal
-      → Agent calls execute_read_batch (browse_project_tree, get_block_content)
-      → Agent generates explanation
-    → Response returned via SSE
+  → ProjectTreeProvider captures selection snapshot
+  → AgentBridgeClient.StartTaskAsync (background thread)
+    → HTTP POST to Bridge (port 43119)
+      → Bridge creates/reuses OpenCode session
+      → HTTP POST to OpenCode (port 43120)
+        → OpenCode spawns tia-mcp (stdio child process)
+        → Agent calls execute_read_batch
+        → Agent generates explanation
+      → Bridge returns response
+    → Add-In polls for completion
   → MessageBox shows result
 ```
 
@@ -112,3 +119,5 @@ User right-clicks block in TIA Portal
 - **Build fails**: Verify TIA Portal V21 is installed
 - **MCP server not found**: Run `tia-mcp doctor` to validate installation
 - **OpenCode unavailable**: Ensure OpenCode is running on port 43120
+- **Bridge not running**: Start TiaAgent.Bridge before using AI Assistant
+- **Bridge port conflict**: Check if port 43119 is in use

@@ -4,6 +4,8 @@
 
 ```text
 TIA Portal Add-In (UI, commands, selection capture)
+  ↓ HTTP (127.0.0.1:43119)
+TiaAgent.Bridge (.NET 8, task management, session management)
   ↓ HTTP (127.0.0.1:43120)
 OpenCode/MiMoCode Agent Runtime (model interaction, tool-calling loop)
   ↓ stdio (MCP protocol)
@@ -20,9 +22,8 @@ TIA Portal V21
 1.  User selects FB_Conveyor in TIA Portal project tree
 2.  User clicks: AI Assistant → Explain selected object
 3.  Add-In captures object name ("FB_Conveyor") and type ("PlcBlock")
-4.  Add-In calls OpenCodeOrchestrator.ExecuteTaskAsync with message:
-    "The user selected object 'FB_Conveyor' of type 'PlcBlock'. Please explain."
-5.  Orchestrator creates OpenCode session and starts task
+4.  Add-In creates BridgeTaskRequest and sends to Bridge (port 43119)
+5.  Bridge creates/reuses OpenCode session and sends message
 6.  OpenCode spawns tia-mcp via stdio (MCP transport)
 7.  Agent calls execute_read_batch with browse_project_tree
 8.  tia-mcp returns project tree (agent discovers block path)
@@ -179,7 +180,7 @@ Format: `tia-<guid>`
 
 4. **Batch operations** — Agent combines related reads into single `execute_read_batch` calls for efficiency.
 
-5. **Add-In calls orchestrator directly** — `ProjectTreeProvider.HandleAction` calls `OpenCodeOrchestrator.ExecuteTaskAsync` on a background thread (fire-and-forget from TIA's UI thread).
+5. **Add-In calls Bridge via HTTP** — `ProjectTreeProvider.HandleAction` creates a `BridgeTaskRequest` and sends it to `TiaAgent.Bridge` on port 43119. The Bridge manages OpenCode sessions and task lifecycle.
 
 ## Known Limitations
 
@@ -188,3 +189,5 @@ Format: `tia-<guid>`
 2. **No selection tokens** — Object context is passed as text in the prompt. The agent must use `browse_project_tree` to discover block paths.
 
 3. **Czarnak's server lacks `get_call_hierarchy`** — Use `read_cross_references` as a partial substitute.
+
+4. **Bridge must be running** — The Add-In requires TiaAgent.Bridge to be running on port 43119 before AI Assistant actions work.

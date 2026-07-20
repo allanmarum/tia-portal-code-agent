@@ -1,5 +1,6 @@
 #if SIEMENS
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,9 +8,10 @@ using System.Windows;
 using Siemens.Engineering;
 using Siemens.Engineering.AddIn;
 using Siemens.Engineering.AddIn.Menu;
+using TiaAgent.AddIn.Bridge;
 using TiaAgent.AddIn.Diagnostics;
 using TiaAgent.AddIn.Ui;
-using TiaAgent.Contracts.Abstractions;
+using TiaAgent.Contracts.Bridge;
 
 namespace TiaAgent.AddIn.Providers;
 
@@ -73,16 +75,20 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
                 return;
             }
 
-            var selectedObj = enumerator.Current;
-            var objName = selectedObj.ToString() ?? "Unknown";
-            var objType = selectedObj.GetType().Name;
+            var selectedObj = enumerator.Current as IEngineeringObject;
+            if (selectedObj == null)
+            {
+                MessageBox.Show("Selected object is not a TIA engineering object.", "TIA Agent", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var selectionSnapshot = SelectionSnapshotFactory.Create(selectedObj);
 
-            AddInLogger.Info($"Action '{action}' on {objName} ({objType})");
+            AddInLogger.Info($"Action '{action}' on {selectionSnapshot.Name} ({selectionSnapshot.ObjectType})");
 
-            // Fire-and-forget: run orchestrator on background thread
+            // Fire-and-forget: run bridge call on background thread
             // TIA Portal menu callbacks must return quickly
             var correlationId = $"tia-{Guid.NewGuid():N}";
-            Task.Run(() => ExecuteViaOrchestratorAsync(action, objName, objType, correlationId));
+            Task.Run(() => ExecuteViaBridgeAsync(action, selectionSnapshot, correlationId));
         }
         catch (Exception ex)
         {
@@ -91,7 +97,7 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
         }
     }
 
-    private async Task ExecuteViaOrchestratorAsync(string action, string objName, string objType, string correlationId)
+    private async Task ExecuteViaBridgeAsync(string action, SelectionSnapshot selection, string correlationId)
     {
         try
         {
@@ -111,41 +117,83 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
                 _ => "analyze this object"
             };
 
-            var descriptor = new OpenCodeTaskDescriptor
+            var pid = Process.GetCurrentProcess().Id;
+            var request = new BridgeTaskRequest
             {
-                Action = action,
+                ContractVersion = "1.0",
                 CorrelationId = correlationId,
-                TiaSessionId = "addin-session",
-                ProjectId = "current",
+                Action = action,
                 AgentId = agentId,
-                Message = $"The user selected object \"{objName}\" of type \"{objType}\" in TIA Portal. Please {actionDescription}.",
-                SelectedObject = new SelectedObjectMetadata
+                TiaInstance = new TiaInstanceSnapshot
                 {
-                    Id = objName,
-                    Name = objName,
-                    ObjectType = objType
-                }
+                    ProcessId = pid,
+                    SessionId = $"addin-{pid}",
+                    Version = "21.0"
+                },
+                Project = new ProjectSnapshot
+                {
+                    Id = "current",
+                    Name = "Current Project",
+                    Path = ""
+                },
+                Selection = selection,
+                UserMessage = $"The user selected object \"{selection.Name}\" of type \"{selection.ObjectType}\" in TIA Portal. Please {actionDescription}."
             };
 
-            AddInLogger.Info($"Calling orchestrator for '{action}' on {objName} (correlationId={correlationId})");
+            AddInLogger.Info($"Submitting task to Bridge for '{action}' on {selection.Name} (correlationId={correlationId})");
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-            var result = await AddInServices.Orchestrator.ExecuteTaskAsync(descriptor, cts.Token);
+            var accepted = await AddInServices.BridgeClient.StartTaskAsync(request, CancellationToken.None).ConfigureAwait(false);
+            AddInLogger.Info($"Task accepted: taskId={accepted.TaskId}, status={accepted.Status}");
 
-            if (result.Success)
+            // Poll for completion
+            var config = AddInServices.Config;
+            var timeout = TimeSpan.FromSeconds(config.TaskTimeoutSeconds);
+            var startTime = DateTime.UtcNow;
+
+            while (true)
             {
-                AddInLogger.Info($"Orchestrator completed for '{action}' on {objName} ({result.Duration.TotalSeconds:F1}s, {result.ToolCalls.Count} tool calls)");
-                AssistantPanelFactory.ShowResult(action, result.Response ?? "No response received.");
+                if (DateTime.UtcNow - startTime > timeout)
+                {
+                    AddInLogger.Warn($"Task timed out after {config.TaskTimeoutSeconds}s");
+                    AssistantPanelFactory.ShowError("Task timed out waiting for response.");
+                    return;
+                }
+
+                await Task.Delay(config.PollingIntervalMilliseconds).ConfigureAwait(false);
+
+                var status = await AddInServices.BridgeClient.GetTaskAsync(accepted.TaskId, CancellationToken.None).ConfigureAwait(false);
+
+                if (status.Status == BridgeTaskStatusValues.Completed)
+                {
+                    AddInLogger.Info($"Task completed for '{action}' on {selection.Name}");
+                    AssistantPanelFactory.ShowResult(action, status.Response ?? "No response received.");
+                    return;
+                }
+
+                if (status.Status == BridgeTaskStatusValues.Failed)
+                {
+                    var errorMsg = status.Error?.Message ?? status.Message ?? "Unknown error";
+                    AddInLogger.Warn($"Task failed for '{action}' on {selection.Name}: {errorMsg}");
+                    AssistantPanelFactory.ShowError(errorMsg);
+                    return;
+                }
+
+                if (status.Status == BridgeTaskStatusValues.Cancelled)
+                {
+                    AddInLogger.Info($"Task cancelled for '{action}' on {selection.Name}");
+                    AssistantPanelFactory.ShowWarning("Task was cancelled.");
+                    return;
+                }
             }
-            else
-            {
-                AddInLogger.Warn($"Orchestrator failed for '{action}' on {objName}: {result.Error}");
-                AssistantPanelFactory.ShowError(result.Error ?? "Unknown error occurred.");
-            }
+        }
+        catch (BridgeTaskException ex)
+        {
+            AddInLogger.Error($"Bridge task failed for '{action}'", ex);
+            AssistantPanelFactory.ShowError("Failed to communicate with AI assistant: " + ex.Message);
         }
         catch (Exception ex)
         {
-            AddInLogger.Error($"Orchestrator execution failed for '{action}'", ex);
+            AddInLogger.Error($"Bridge execution failed for '{action}'", ex);
             AssistantPanelFactory.ShowError("Failed to communicate with AI assistant: " + ex.Message);
         }
     }
@@ -173,6 +221,7 @@ public sealed class TiaAgentTestContextMenu : ContextMenuAddIn
                     var version = typeof(TiaAgentTestContextMenu).Assembly.GetName().Version?.ToString() ?? "unknown";
                     var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                     var pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+                    var config = AddInServices.Config;
 
                     var msg = "TIA Portal Code Agent - Integration Test\n"
                             + "==========================================\n\n"
@@ -180,6 +229,8 @@ public sealed class TiaAgentTestContextMenu : ContextMenuAddIn
                             + "Version:   " + version + "\n"
                             + "Timestamp: " + timestamp + "\n"
                             + "Process:   " + pid + "\n\n"
+                            + "Bridge URL: " + config.BridgeBaseUrl + "\n"
+                            + "Timeout:    " + config.RequestTimeoutSeconds + "s\n\n"
                             + "The Add-In is correctly installed and operational.\n"
                             + "Context menu actions are responding.\n\n"
                             + "MCP Server: Czarnak/tia-portal-mcp (via stdio)\n"

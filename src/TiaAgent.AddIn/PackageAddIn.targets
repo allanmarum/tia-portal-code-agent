@@ -1,0 +1,63 @@
+<Project>
+
+  <!-- ================================================================
+       PackageAddIn: Uses Siemens.Engineering.AddIn.Publisher.exe to
+       create, sign, and deploy the TIA Portal .addin package.
+       ================================================================ -->
+
+  <PropertyGroup>
+    <AddInVersion>$(Version)</AddInVersion>
+    <AddInConfigPath>$(MSBuildThisFileDirectory)Config.xml</AddInConfigPath>
+    <AddInDeployDir>$(APPDATA)\Siemens\Automation\Portal V21\UserAddIns</AddInDeployDir>
+    <TiaPublisherPath>$(ProgramFiles)\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe</TiaPublisherPath>
+    <OpcSignerPath>$(MSBuildThisFileDirectory)..\..\tools\OpcSigner\bin\Release\net48\OpcSigner.exe</OpcSignerPath>
+  </PropertyGroup>
+
+  <!-- Target: create, sign, and deploy the .addin package after Build -->
+  <Target Name="PackageAddIn"
+          AfterTargets="Build"
+          Condition="'$(BuildingInsideVisualStudio)' != 'true'">
+
+    <PropertyGroup>
+      <_AddInDllPath>$(TargetDir)TiaAgent.AddIn.dll</_AddInDllPath>
+    </PropertyGroup>
+
+    <Message Importance="high" Text="=== Packaging TIA Portal Add-In ===" Condition="Exists('$(_AddInDllPath)') AND Exists('$(TiaPublisherPath)')" />
+
+    <!-- Copy Config.xml to output directory (Publisher expects it there) -->
+    <Copy SourceFiles="$(AddInConfigPath)"
+          DestinationFolder="$(TargetDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(_AddInDllPath)') AND Exists('$(TiaPublisherPath)')" />
+
+    <!-- Run Publisher: creates .addin from Config.xml + build output -->
+    <Exec
+      Command="&quot;$(TiaPublisherPath)&quot; -f &quot;$(TargetDir)Config.xml&quot; -c -v -l &quot;$(TargetDir)publish.log&quot;"
+      Condition="Exists('$(_AddInDllPath)') AND Exists('$(TiaPublisherPath)')"
+      ConsoleToMSBuild="true" />
+
+    <Warning Text="Publisher not found at $(TiaPublisherPath). Install TIA Portal V21."
+             Condition="!Exists('$(TiaPublisherPath)') AND Exists('$(_AddInDllPath)')" />
+
+    <!-- Sign the .addin package with OpcSigner -->
+    <Exec
+      Command="&quot;$(OpcSignerPath)&quot; &quot;$(TargetDir)TiaAgent.AddIn.addin&quot;"
+      Condition="Exists('$(TargetDir)TiaAgent.AddIn.addin') AND Exists('$(OpcSignerPath)')"
+      ConsoleToMSBuild="true" />
+
+    <!-- Deploy to TIA Portal UserAddIns -->
+    <Copy SourceFiles="$(TargetDir)TiaAgent.AddIn.addin"
+          DestinationFolder="$(AddInDeployDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(TargetDir)TiaAgent.AddIn.addin') AND Exists('$(AddInDeployDir)')" />
+    <Message Importance="high"
+             Text="Deployed to $(AddInDeployDir)\TiaAgent.AddIn.addin"
+             Condition="Exists('$(TargetDir)TiaAgent.AddIn.addin') AND Exists('$(AddInDeployDir)')" />
+    <Message Importance="normal"
+             Text="UserAddIns directory not found, skipping deploy."
+             Condition="!Exists('$(AddInDeployDir)') AND Exists('$(TargetDir)TiaAgent.AddIn.addin')" />
+
+    <Message Importance="high" Text="=== Add-In package ready. Restart TIA Portal to load. ===" Condition="Exists('$(_AddInDllPath)') AND Exists('$(TiaPublisherPath)')" />
+  </Target>
+
+</Project>
