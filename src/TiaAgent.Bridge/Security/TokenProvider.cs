@@ -21,6 +21,8 @@ public sealed class TokenProvider
 
     public string Token => _token;
 
+    public string TokenFilePath => _tokenFilePath;
+
     public bool Validate(string? bearerToken)
     {
         if (string.IsNullOrEmpty(bearerToken))

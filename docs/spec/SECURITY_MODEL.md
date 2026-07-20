@@ -253,6 +253,40 @@ Do not record by default:
 - sign artifacts when the deployment model supports it;
 - do not download executables at Add-In runtime.
 
-## 12. Safety statement
+## 12. Runtime Supervisor Security
+
+The Runtime Supervisor enforces additional security measures for the local development runtime:
+
+### 12.1 Single-Instance Protection
+
+- Uses Windows named mutex `Local\TiaAgent.Supervisor` to prevent multiple supervisors
+- Maintains `supervisor.lock` file for diagnostics
+- Validates lock ownership before cleanup
+
+### 12.2 Port Security
+
+- All services bind to `127.0.0.1` only (loopback)
+- Never binds to `0.0.0.0` or external interfaces
+- Port allocation validates availability before binding
+
+### 12.3 Credential Management
+
+- Transient credentials stored in `%LOCALAPPDATA%\TiaAgent\runtime\secrets\`
+- Credentials are never logged or included in `runtime.json`
+- Secrets are cleaned on shutdown and periodically (24h expiry)
+
+### 12.4 Process Ownership
+
+- Validates PID belongs to expected executable before shutdown
+- Never terminates unrelated processes
+- Uses bounded timeouts for graceful shutdown
+
+### 12.5 Runtime Manifest
+
+- `runtime.json` is discovery metadata only, not proof of service health
+- Consumers must validate health endpoints before use
+- Manifest is written atomically (temp file + validate + move)
+
+## 13. Safety statement
 
 The product assists engineering. It does not replace commissioning, validation, functional-safety procedures, or authorized plant change control.

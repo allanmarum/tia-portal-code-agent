@@ -1727,6 +1727,188 @@ Endpoints, schemas, and exact options must be validated against the actually ins
 
 ---
 
-## 30. Final rule
+## 30. Local Runtime Supervisor
+
+### 30.1 Responsibility
+
+The Local Runtime Supervisor orchestrates the startup, monitoring, and shutdown of all runtime services (Bridge and OpenCode). It provides a single entry point for managing the local development runtime.
+
+Key responsibilities:
+- Validate prerequisites before starting services
+- Allocate and manage local ports (loopback only)
+- Start Bridge and OpenCode processes with proper configuration
+- Monitor service health via HTTP endpoints
+- Publish a runtime manifest for service discovery
+- Provide controlled shutdown with graceful termination
+- Prevent multiple supervisor instances via named mutex
+
+### 30.2 Startup Sequence
+
+```text
+1. Acquire supervisor mutex (Local\TiaAgent.Supervisor)
+2. Create LocalAppData structure
+3. Validate prerequisites
+4. Detect and clean stale runtime state
+5. Load settings from settings.json
+6. Allocate ports (preferred: Bridge=43119, OpenCode=43120)
+7. Generate transient credentials (MCP bearer token)
+8. Publish runtime status as "starting"
+9. Start Bridge process
+10. Wait for Bridge health check
+11. Generate OpenCode configuration
+12. Start OpenCode process
+13. Wait for OpenCode health check
+14. Publish runtime status as "ready"
+15. Monitor child processes
+```
+
+### 30.3 Shutdown Sequence
+
+```text
+1. Read and validate runtime.json
+2. Confirm instance belongs to TiaAgent
+3. Set global state to "stopping"
+4. Stop OpenCode (graceful, bounded timeout)
+5. Stop Bridge (graceful, bounded timeout)
+6. Force-kill only owned processes that refused graceful stop
+7. Remove transient secrets
+8. Remove supervisor.lock
+9. Release mutex
+10. Update manifest to "stopped"
+```
+
+### 30.4 Runtime Directory Structure
+
+```text
+%LOCALAPPDATA%\TiaAgent\
+├── config\
+│   └── settings.json
+├── runtime\
+│   ├── runtime.json
+│   ├── supervisor.lock
+│   ├── opencode.generated.json
+│   └── secrets\
+│       └── mcp.token
+├── logs\
+│   ├── supervisor.log
+│   ├── bridge.log
+│   └── opencode.log
+├── scripts\
+│   ├── run.ps1
+│   ├── stop.ps1
+│   └── status.ps1
+└── temp\
+```
+
+### 30.5 Runtime Manifest Schema
+
+```json
+{
+  "schemaVersion": 1,
+  "instanceId": "generated-instance-id",
+  "status": "starting|ready|degraded|stopping|stopped|failed",
+  "supervisorPid": 0,
+  "startedAt": "ISO-8601 timestamp",
+  "updatedAt": "ISO-8601 timestamp",
+  "services": {
+    "bridge": {
+      "status": "pending|starting|healthy|unhealthy|stopped|failed",
+      "pid": 0,
+      "host": "127.0.0.1",
+      "port": 0,
+      "baseUrl": "http://127.0.0.1:43119",
+      "healthUrl": "http://127.0.0.1:43119/health"
+    },
+    "opencode": {
+      "status": "pending|starting|healthy|unhealthy|stopped|failed",
+      "pid": 0,
+      "host": "127.0.0.1",
+      "port": 0,
+      "baseUrl": "http://127.0.0.1:43120",
+      "healthUrl": "http://127.0.0.1:43120/health"
+    }
+  }
+}
+```
+
+**Important:** `runtime.json` is discovery metadata, not proof of service health. Consumers must validate the relevant health endpoint.
+
+### 30.6 Service Discovery
+
+The Add-In discovers services via:
+1. Reading `runtime.json` from `%LOCALAPPDATA%\TiaAgent\runtime\`
+2. Validating `schemaVersion` and `status`
+3. Calling the service's health endpoint
+4. Using the `baseUrl` for subsequent requests
+
+Fallback: If `addin.json` exists, it takes precedence over runtime discovery.
+
+### 30.7 Port Allocation
+
+- Preferred ports: Bridge=43119, OpenCode=43120
+- Fallback range: 43100-43200
+- All services bind to `127.0.0.1` only (loopback)
+- Ports are validated by attempting to bind a temporary TcpListener
+- Actual allocated ports are published in `runtime.json`
+
+### 30.8 Security Boundaries
+
+- All services bind to `127.0.0.1` only (no `0.0.0.0`)
+- Transient credentials stored in `runtime/secrets/` with restricted access
+- Secrets are never logged or included in `runtime.json`
+- Named mutex `Local\TiaAgent.Supervisor` prevents multiple supervisors
+- Process identity validated before shutdown (PID + executable name)
+
+### 30.9 Failure Modes
+
+| Failure | Response |
+|---------|----------|
+| Prerequisites missing | Exit with actionable error message |
+| Port unavailable | Try fallback range, fail if all occupied |
+| Bridge fails to start | Mark as failed, exit with error |
+| OpenCode fails to start | Stop Bridge, mark as failed, exit |
+| Health check timeout | Mark service as unhealthy, continue if non-critical |
+| Child process exits unexpectedly | Update manifest, log error, continue monitoring |
+| Stale runtime state | Clean up automatically on startup |
+| Multiple supervisors | Mutex prevents duplicate, reports existing instance |
+
+### 30.10 Troubleshooting Commands
+
+```powershell
+# Check runtime status
+.\src\runtime\Scripts\status.ps1
+
+# JSON status for automation
+.\src\runtime\Scripts\status.ps1 -Json
+
+# Start runtime
+.\src\runtime\Scripts\run.ps1
+
+# Start with verbose logging
+.\src\runtime\Scripts\run.ps1 -Verbose
+
+# Stop runtime
+.\src\runtime\Scripts\stop.ps1
+
+# Force stop (skip graceful shutdown)
+.\src\runtime\Scripts\stop.ps1 -Force
+
+# View supervisor logs
+Get-Content "$env:LOCALAPPDATA\TiaAgent\logs\supervisor.log" -Tail 50
+
+# View Bridge logs
+Get-Content "$env:LOCALAPPDATA\TiaAgent\logs\bridge.log" -Tail 50
+
+# Check runtime manifest
+Get-Content "$env:LOCALAPPDATA\TiaAgent\runtime\runtime.json" | ConvertFrom-Json
+
+# Manual health checks
+Invoke-RestMethod http://127.0.0.1:43119/health
+Invoke-RestMethod http://127.0.0.1:43120/health
+```
+
+---
+
+## 31. Final rule
 
 > The Add-In is the trusted boundary with TIA Portal. MCP is only the tool contract. OpenCode is the agent runtime. Openness access exists exactly once, changes require human control, and no component may silently exceed its responsibility.

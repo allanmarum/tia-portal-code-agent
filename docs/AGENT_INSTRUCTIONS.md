@@ -50,7 +50,61 @@ Or step by step:
 .\build.ps1 install  # Copy to UserAddIns
 ```
 
-## Bridge Startup
+## Runtime Supervisor (Recommended)
+
+The Runtime Supervisor provides a single command to start, monitor, and stop all services:
+
+```powershell
+# Start all services (Bridge + OpenCode)
+.\src\runtime\Scripts\run.ps1
+
+# Check status
+.\src\runtime\Scripts\status.ps1
+
+# Stop all services
+.\src\runtime\Scripts\stop.ps1
+```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `run.ps1` | Start and monitor all services |
+| `stop.ps1` | Gracefully stop all services |
+| `status.ps1` | Show runtime status and health |
+
+### Options
+
+```powershell
+# Start with verbose logging
+.\src\runtime\Scripts\run.ps1 -Verbose
+
+# Start and exit (no monitoring)
+.\src\runtime\Scripts\run.ps1 -NoMonitor
+
+# JSON status output
+.\src\runtime\Scripts\status.ps1 -Json
+
+# Force stop (skip graceful shutdown)
+.\src\runtime\Scripts\stop.ps1 -Force
+```
+
+### Runtime Directory
+
+All runtime data is stored in `%LOCALAPPDATA%\TiaAgent\`:
+
+```
+%LOCALAPPDATA%\TiaAgent\
+├── config\settings.json    # Supervisor configuration
+├── runtime\runtime.json    # Service discovery manifest
+├── runtime\secrets\        # Transient credentials
+├── logs\                   # Service logs
+└── scripts\                # Runtime scripts
+```
+
+## Manual Bridge Startup (Legacy)
+
+If you need to start the Bridge manually without the Runtime Supervisor:
 
 ```powershell
 # Start the Bridge (required for AI Assistant actions)
@@ -81,11 +135,12 @@ The Add-In now only requires `TiaAgent.AddIn.dll` and `TiaAgent.Contracts.dll` �
 
 1. Install MCP server: `dotnet tool install -g TiaMcpServer`
 2. Validate: `tia-mcp doctor`
-3. Open TIA Portal V21 with a project
-4. Right-click in Project Tree → **TIA Agent Diagnostics** → **Test Integration**
-5. MessageBox confirms the Add-In is functional
-6. Right-click a PLC block → **AI Assistant** → **Explain selected object**
-7. Check `%LOCALAPPDATA%\TiaAgent\addin.log` for diagnostic entries
+3. Start Runtime Supervisor: `.\src\runtime\Scripts\run.ps1`
+4. Open TIA Portal V21 with a project
+5. Right-click in Project Tree → **TIA Agent Diagnostics** → **Test Integration**
+6. MessageBox confirms the Add-In is functional
+7. Right-click a PLC block → **AI Assistant** → **Explain selected object**
+8. Check `%LOCALAPPDATA%\TiaAgent\addin.log` for diagnostic entries
 
 ## End-to-End Flow
 
@@ -104,6 +159,16 @@ User right-clicks block in TIA Portal
   → MessageBox shows result
 ```
 
+## Service Discovery
+
+The Add-In discovers services via the runtime manifest:
+
+1. Reads `%LOCALAPPDATA%\TiaAgent\runtime\runtime.json`
+2. Validates the schema version and status
+3. Calls the service's health endpoint before use
+
+**Important:** `runtime.json` is discovery metadata, not proof of service health. Always validate the health endpoint.
+
 ## Key Technical Details
 
 - **Provider constructor MUST take `TiaPortal`**: TIA Portal passes it automatically
@@ -118,6 +183,6 @@ User right-clicks block in TIA Portal
 - **Context menus missing**: Check `%LOCALAPPDATA%\TiaAgent\addin.log`
 - **Build fails**: Verify TIA Portal V21 is installed
 - **MCP server not found**: Run `tia-mcp doctor` to validate installation
-- **OpenCode unavailable**: Ensure OpenCode is running on port 43120
-- **Bridge not running**: Start TiaAgent.Bridge before using AI Assistant
-- **Bridge port conflict**: Check if port 43119 is in use
+- **OpenCode unavailable**: Ensure Runtime Supervisor is running: `.\src\runtime\Scripts\status.ps1`
+- **Bridge not running**: Start Runtime Supervisor: `.\src\runtime\Scripts\run.ps1`
+- **Port conflict**: Runtime Supervisor automatically allocates alternative ports from range 43100-43200

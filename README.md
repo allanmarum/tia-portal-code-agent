@@ -53,6 +53,7 @@ User → TIA Portal → Add-In → TiaAgent.Bridge → OpenCode Agent → stdio 
 | `TiaAgent.Bridge` | Local HTTP API, task/session management, OpenCode client, process management |
 | `TiaAgent.Contracts` | Stable DTOs, interfaces, error codes, events — no Siemens types |
 | `TiaAgent.OpenCode` | HTTP client for OpenCode/MiMoCode agent runtime (used by Bridge only) |
+| **Runtime Supervisor** | PowerShell scripts for service lifecycle management |
 
 ### External Components (not in this repo)
 
@@ -182,11 +183,17 @@ tia-portal-code-agent/
 │   ├── TiaAgent.AddIn/            # TIA Portal Add-In (UI, commands, Bridge client)
 │   ├── TiaAgent.Bridge/           # Local HTTP API, task/session management, OpenCode client
 │   ├── TiaAgent.Contracts/        # DTOs, interfaces, errors, events
-│   └── TiaAgent.OpenCode/         # OpenCode HTTP client
+│   ├── TiaAgent.OpenCode/         # OpenCode HTTP client
+│   └── runtime/                   # Runtime Supervisor (PowerShell module)
+│       ├── TiaAgent.Supervisor.psm1
+│       ├── TiaAgent.Supervisor.psd1
+│       ├── Functions/             # PowerShell functions
+│       └── Scripts/               # run.ps1, stop.ps1, status.ps1
 ├── tests/
 │   ├── TiaAgent.Application.Tests/
 │   ├── TiaAgent.Contracts.Tests/
-│   └── TiaAgent.ArchitectureTests/
+│   ├── TiaAgent.ArchitectureTests/
+│   └── TiaAgent.Runtime.Tests/    # Runtime Supervisor tests
 ├── agents/                        # Agent profile definitions
 │   ├── tia-explain.md             # Read-only explanation agent
 │   ├── tia-review.md              # Review agent (reads + compile)
@@ -194,7 +201,8 @@ tia-portal-code-agent/
 ├── config/
 │   ├── opencode.json              # OpenCode + MCP server config
 │   ├── opencode.example.json
-│   └── bridge.example.json        # Bridge configuration example
+│   ├── bridge.example.json        # Bridge configuration example
+│   └── settings.example.json      # Runtime Supervisor settings template
 └── docs/
     ├── spec/                      # Authoritative specifications
     │   ├── ARCHITECTURE.md
@@ -229,6 +237,18 @@ tia-mcp doctor  # Validate environment
 .\build.ps1 all    # Build + Test + Pack
 .\build.ps1 install  # Copy to UserAddIns
 ```
+
+### Start Runtime Supervisor
+
+The Runtime Supervisor starts and manages all services:
+
+```powershell
+.\src\runtime\Scripts\run.ps1    # Start all services
+.\src\runtime\Scripts\status.ps1 # Check status
+.\src\runtime\Scripts\stop.ps1   # Stop all services
+```
+
+See [Runtime Supervisor](#runtime-supervisor) for detailed usage.
 
 ### Configure OpenCode
 
@@ -317,6 +337,69 @@ Packaging uses the V21 `Siemens.Engineering.AddIn.Publisher.exe`:
 2. Install: `.\build.ps1 install`
 3. Open TIA Portal V21 → Add-Ins task card → review permissions → activate.
 4. Right-click a PLC block → AI Assistant → Explain/Review/Propose.
+
+## Runtime Supervisor
+
+The Runtime Supervisor provides a single command to start, monitor, and stop all services.
+
+### Quick Start
+
+```powershell
+# Start all services (Bridge + OpenCode)
+.\src\runtime\Scripts\run.ps1
+
+# Check status
+.\src\runtime\Scripts\status.ps1
+
+# Stop all services
+.\src\runtime\Scripts\stop.ps1
+```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `run.ps1` | Start and monitor all services |
+| `stop.ps1` | Gracefully stop all services |
+| `status.ps1` | Show runtime status and health |
+
+### Options
+
+```powershell
+# Start with verbose logging
+.\src\runtime\Scripts\run.ps1 -Verbose
+
+# Start and exit (no monitoring)
+.\src\runtime\Scripts\run.ps1 -NoMonitor
+
+# JSON status output
+.\src\runtime\Scripts\status.ps1 -Json
+
+# Force stop (skip graceful shutdown)
+.\src\runtime\Scripts\stop.ps1 -Force
+```
+
+### Runtime Directory
+
+All runtime data is stored in `%LOCALAPPDATA%\TiaAgent\`:
+
+```
+%LOCALAPPDATA%\TiaAgent\
+├── config\settings.json    # Supervisor configuration
+├── runtime\runtime.json    # Service discovery manifest
+├── runtime\secrets\        # Transient credentials
+├── logs\                   # Service logs
+└── scripts\                # Runtime scripts
+```
+
+### Service Discovery
+
+The Add-In discovers services via `runtime.json`:
+- Reads the manifest from `%LOCALAPPDATA%\TiaAgent\runtime\runtime.json`
+- Validates the schema version and status
+- Calls the service's health endpoint before use
+
+**Important:** `runtime.json` is discovery metadata, not proof of service health. Always validate the health endpoint.
 
 ## Known Unknowns
 

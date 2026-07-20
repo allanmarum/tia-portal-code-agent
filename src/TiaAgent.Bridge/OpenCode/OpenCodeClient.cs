@@ -38,14 +38,26 @@ public sealed class OpenCodeClient : IDisposable
     {
         var payload = $"{{\"agent\":\"{EscapeJson(agentId)}\",\"prompt\":\"{EscapeJson(prompt)}\"}}";
         var content = new StringContent(payload, Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync($"{_baseUrl}/sessions", content, cancellationToken).ConfigureAwait(false);
-        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        return new SessionResponse
+        var url = $"{_baseUrl}/sessions";
+        try
         {
-            Success = response.IsSuccessStatusCode,
-            SessionId = ExtractField(body, "sessionId"),
-            RawJson = body
-        };
+            var response = await _httpClient.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            return new SessionResponse
+            {
+                Success = response.IsSuccessStatusCode,
+                SessionId = ExtractField(body, "sessionId"),
+                RawJson = body
+            };
+        }
+        catch (Exception ex)
+        {
+            return new SessionResponse
+            {
+                Success = false,
+                RawJson = $"Connection failed to {url}: {ex.Message}"
+            };
+        }
     }
 
     public async Task<MessageResponse> SendMessageAsync(string sessionId, string message, CancellationToken cancellationToken = default)

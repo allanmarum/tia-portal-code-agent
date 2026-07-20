@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using TiaAgent.Bridge.Configuration;
@@ -16,6 +17,11 @@ namespace TiaAgent.Bridge.Api;
 
 public sealed class BridgeController : IDisposable
 {
+    private static readonly JsonSerializerOptions s_jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly HttpListener _listener;
     private readonly BridgeConfig _config;
     private readonly BridgeLogger _logger;
@@ -93,9 +99,12 @@ public sealed class BridgeController : IDisposable
             // Bearer token authentication (except health check)
             if (path != "/health")
             {
-                if (!AuthenticateRequest(request))
+                var (authenticated, errorType, errorMessage) = AuthenticateRequest(request);
+                if (!authenticated)
                 {
-                    await WriteJsonResponseAsync(response, 401, "{\"error\":\"Unauthorized\"}").ConfigureAwait(false);
+                    _logger.Warn($"Auth failed: type={errorType}, path={path}, method={method}");
+                    var errorJson = $"{{\"error\":\"Unauthorized\",\"errorType\":\"{errorType}\",\"message\":\"{EscapeJson(errorMessage)}\"}}";
+                    await WriteJsonResponseAsync(response, 401, errorJson).ConfigureAwait(false);
                     return;
                 }
             }
@@ -140,28 +149,32 @@ public sealed class BridgeController : IDisposable
         }
     }
 
-    private bool AuthenticateRequest(HttpListenerRequest request)
+    private (bool success, string errorType, string message) AuthenticateRequest(HttpListenerRequest request)
     {
         var authHeader = request.Headers["Authorization"];
-        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return false;
+        if (string.IsNullOrEmpty(authHeader))
+            return (false, "missing", "Authorization header is required");
+
+        if (!authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            return (false, "malformed", "Authorization header must use 'Bearer' scheme");
 
         var token = authHeader.Substring("Bearer ".Length);
-        return _tokenProvider.Validate(token);
+        if (string.IsNullOrWhiteSpace(token))
+            return (false, "malformed", "Bearer token is empty");
+
+        if (!_tokenProvider.Validate(token))
+            return (false, "invalid", "Invalid authentication token");
+
+        return (true, "", "");
     }
 
     private async Task HandleHealthAsync(HttpListenerResponse response)
     {
         var health = await _openCodeClient.HealthCheckAsync().ConfigureAwait(false);
-        var result = new BridgeHealthResponse
-        {
-            Status = "ok",
-            BridgeVersion = "1.0.0",
-            OpenCodeAvailable = health.Available,
-            OpenCodeVersion = health.Available ? "connected" : "unavailable",
-            McpConfigured = health.Available
-        };
-        await WriteJsonResponseAsync(response, 200, SerializeHealthResponse(result)).ConfigureAwait(false);
+        var instanceId = Environment.GetEnvironmentVariable("TIA_AGENT_INSTANCE_ID") ?? "";
+
+        var healthJson = $"{{\"service\":\"tia-agent-bridge\",\"status\":\"healthy\",\"version\":\"0.1.0\",\"instanceId\":\"{EscapeJson(instanceId)}\",\"openCodeAvailable\":{health.Available.ToString().ToLowerInvariant()},\"openCodeVersion\":\"{EscapeJson(health.Available ? "connected" : "unavailable")}\"}}";
+        await WriteJsonResponseAsync(response, 200, healthJson).ConfigureAwait(false);
     }
 
     private async Task HandleCreateTaskAsync(HttpListenerRequest request, HttpListenerResponse response)
@@ -237,7 +250,9 @@ public sealed class BridgeController : IDisposable
             {
                 version = "1.0.0",
                 port = _config.Port,
-                maxConcurrentTasks = _config.MaxConcurrentTasks
+                pid = Environment.ProcessId,
+                maxConcurrentTasks = _config.MaxConcurrentTasks,
+                authTokenFingerprint = TokenFingerprint(_tokenProvider.Token)
             },
             sessions = new
             {
@@ -249,6 +264,14 @@ public sealed class BridgeController : IDisposable
             }
         };
         await WriteJsonResponseAsync(response, 200, SerializeDiagnostics(diagnostics)).ConfigureAwait(false);
+    }
+
+    private static string TokenFingerprint(string token)
+    {
+        if (string.IsNullOrEmpty(token)) return "<empty>";
+        return token.Length > 8
+            ? $"{token[..4]}...{token[^4..]} ({token.Length} chars)"
+            : $"{token[..2]}... ({token.Length} chars)";
     }
 
     private static async Task WriteJsonResponseAsync(HttpListenerResponse response, int statusCode, string json)
@@ -287,14 +310,20 @@ public sealed class BridgeController : IDisposable
     private static string EscapeJson(string? s) =>
         (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
 
-    private static BridgeTaskRequest? DeserializeTaskRequest(string json)
+    private BridgeTaskRequest? DeserializeTaskRequest(string json)
     {
         try
         {
-            return System.Text.Json.JsonSerializer.Deserialize<BridgeTaskRequest>(json);
+            var request = System.Text.Json.JsonSerializer.Deserialize<BridgeTaskRequest>(json, s_jsonOptions);
+            if (request != null)
+            {
+                _logger.Info($"Deserialized request: action='{request.Action}', agentId='{request.AgentId}', project={request.Project != null}, selection={request.Selection != null}");
+            }
+            return request;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.Error($"JSON deserialization failed: {ex.Message}", ex);
             return null;
         }
     }

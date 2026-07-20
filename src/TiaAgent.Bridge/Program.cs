@@ -13,6 +13,14 @@ namespace TiaAgent.Bridge;
 
 public static class Program
 {
+    private static string TokenFingerprint(string token)
+    {
+        if (string.IsNullOrEmpty(token)) return "<empty>";
+        return token.Length > 8
+            ? $"{token[..4]}...{token[^4..]} ({token.Length} chars)"
+            : $"{token[..2]}... ({token.Length} chars)";
+    }
+
     public static async Task Main(string[] args)
     {
         var logger = new BridgeLogger();
@@ -24,13 +32,13 @@ public static class Program
         logger.Startup($"OpenCode URL: {config.OpenCodeBaseUrl}");
         logger.Startup($"Max concurrent tasks: {config.MaxConcurrentTasks}");
         logger.Startup($"Task timeout: {config.TaskTimeoutSeconds}s");
-        logger.Startup($"Auth token: {tokenProvider.Token}");
+        logger.Startup($"Auth token fingerprint: {TokenFingerprint(tokenProvider.Token)}");
 
         var openCodeClient = new OpenCodeClient(
             config.OpenCodeBaseUrl,
             TimeSpan.FromSeconds(config.TaskTimeoutSeconds));
         var sessionManager = new SessionManager(openCodeClient);
-        var taskManager = new TaskManager(openCodeClient, config.MaxConcurrentTasks);
+        var taskManager = new TaskManager(openCodeClient, config.MaxConcurrentTasks, logger);
 
         var controller = new BridgeController(config, logger, tokenProvider, openCodeClient, sessionManager, taskManager);
 

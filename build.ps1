@@ -24,7 +24,7 @@
 #>
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("build", "test", "pack", "all", "clean", "install", "verify", "help")]
+    [ValidateSet("build", "test", "pack", "all", "clean", "install", "verify", "mcp", "help")]
     [string]$Command = "help"
 )
 
@@ -84,6 +84,43 @@ function Write-Info($text) {
 
 function Write-Warn($text) {
     Write-Host "  WARN: $text" -ForegroundColor DarkYellow
+}
+
+function Remove-FileWithRetry {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [ValidateRange(1, 60)]
+        [int]$MaxAttempts = 12,
+
+        [ValidateRange(50, 5000)]
+        [int]$DelayMilliseconds = 500
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    # Release any package handles left behind in the current PowerShell process.
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -eq $MaxAttempts) {
+                throw "Cannot remove '$Path' after $MaxAttempts attempts. Another process is still using the file. Close TIA Portal, File Explorer preview/archive tools, and any other build or verify process, then retry. Original error: $($_.Exception.Message)"
+            }
+
+            Write-Warn "Package is locked; retrying removal ($attempt/$MaxAttempts)..."
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
 }
 
 # ============================================================
@@ -154,14 +191,17 @@ function Invoke-Pack {
     $packDir = "$Root\artifacts"
     $versionTag = $Version -replace '\.', '-'
     $addinFile = "$packDir\TiaAgent-$versionTag.addin"
+    $temporaryAddinFile = "$packDir\TiaAgent-$versionTag.$([Guid]::NewGuid().ToString('N')).tmp.addin"
     $addinBin = "$Root\src\TiaAgent.AddIn\bin\$Config\net48"
     $configXml = "$Root\src\TiaAgent.AddIn\Config.xml"
     $publisher = "C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe"
 
     # Clean
     Write-Step 1 4 "Cleaning previous packages..."
-    if (Test-Path $addinFile) { Remove-Item $addinFile -Force }
-    if (-not (Test-Path $packDir)) { New-Item -ItemType Directory -Path $packDir -Force | Out-Null }
+    if (-not (Test-Path -LiteralPath $packDir)) {
+        New-Item -ItemType Directory -Path $packDir -Force | Out-Null
+    }
+    Remove-FileWithRetry -Path $addinFile
     Write-Ok "Clean"
 
     # Verify build output
@@ -173,52 +213,79 @@ function Invoke-Pack {
     # Copy Config.xml to build dir
     Copy-Item $configXml "$addinBin\Config.xml" -Force
 
-    # Step 2: Run Siemens Publisher
-    Write-Step 2 4 "Running Siemens Publisher..."
-    if (-not (Test-Path $publisher)) {
-        Write-Fail "Publisher not found: $publisher"
-        exit 1
+    try {
+        # Step 2: Run Siemens Publisher into a temporary file. This prevents
+        # a failed build from leaving a partial package at the final path.
+        Write-Step 2 4 "Running Siemens Publisher..."
+        if (-not (Test-Path $publisher)) {
+            Write-Fail "Publisher not found: $publisher"
+            exit 1
+        }
+        & $publisher -f "$addinBin\Config.xml" -o $temporaryAddinFile -l "$addinBin\publisher_log.txt" -v -c 2>&1 | ForEach-Object { Write-Info $_ }
+        if ($LASTEXITCODE -ne 0) { Write-Fail "Publisher failed"; exit 1 }
+        Write-Ok "Publisher created base package"
+
+        # Step 3: Sign the temporary package
+        Write-Step 3 4 "Signing package..."
+        $signerExe = "$Root\tools\OpcSigner\bin\$Config\net48\OpcSigner.exe"
+        if (Test-Path $signerExe) {
+            & $signerExe $temporaryAddinFile 2>&1 | ForEach-Object { Write-Info $_ }
+            if ($LASTEXITCODE -ne 0) { Write-Fail "Package signing failed"; exit 1 }
+            Write-Ok "Package signed"
+        } else {
+            Write-Info "OpcSigner not found -- package will be unsigned"
+        }
+
+        # Step 4: Verify and always dispose the OPC package handle.
+        Write-Step 4 4 "Verifying package..."
+        $pkg = $null
+        try {
+            $pkg = [System.IO.Packaging.Package]::Open(
+                $temporaryAddinFile,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                [System.IO.FileShare]::Read
+            )
+
+            $partCount = 0
+            $hasFeature = $false
+            foreach ($part in $pkg.GetParts()) {
+                $partCount++
+                if ($part.Uri.ToString() -match "TIAAGENT.ADDIN") { $hasFeature = $true }
+            }
+        }
+        finally {
+            if ($null -ne $pkg) {
+                $pkg.Close()
+                $pkg.Dispose()
+            }
+        }
+
+        if ($hasFeature) { Write-Ok "Feature assembly present" }
+        else { Write-Fail "Feature assembly missing!"; exit 1 }
+        Write-Ok "Total parts: $partCount"
+
+        # Publish only after signing and verification have completed.
+        Move-Item -LiteralPath $temporaryAddinFile -Destination $addinFile -Force -ErrorAction Stop
+
+        # Summary
+        $size = (Get-Item $addinFile).Length / 1KB
+        Write-Info "File: $addinFile"
+        Write-Info "Size: $([math]::Round($size, 1)) KB"
+        Write-Info "Version: $Version"
+        Write-Info "Publisher: Siemens.Engineering.AddIn.Publisher.exe"
+
+        Write-Host ""
+        Write-Host "Packaging completed!" -ForegroundColor Green
+        Write-Host "  To install: .\build.ps1 install" -ForegroundColor Gray
+        Write-Host "  To verify:  .\build.ps1 verify" -ForegroundColor Gray
     }
-    & $publisher -f "$addinBin\Config.xml" -o $addinFile -l "$addinBin\publisher_log.txt" -v -c 2>&1 | ForEach-Object { Write-Info $_ }
-    if ($LASTEXITCODE -ne 0) { Write-Fail "Publisher failed"; exit 1 }
-    Write-Ok "Publisher created base package"
-
-    # Step 3: Sign the package
-    Write-Step 3 4 "Signing package..."
-    $signerExe = "$Root\tools\OpcSigner\bin\$Config\net48\OpcSigner.exe"
-    if (Test-Path $signerExe) {
-        & $signerExe $addinFile 2>&1 | ForEach-Object { Write-Info $_ }
-        Write-Ok "Package signed"
-    } else {
-        Write-Info "OpcSigner not found -- package will be unsigned"
+    finally {
+        # Remove an incomplete temporary package after any failure.
+        if (Test-Path -LiteralPath $temporaryAddinFile) {
+            Remove-Item -LiteralPath $temporaryAddinFile -Force -ErrorAction SilentlyContinue
+        }
     }
-
-    # Step 4: Verify
-    Write-Step 4 4 "Verifying package..."
-    $pkg = [System.IO.Packaging.Package]::Open($addinFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
-    $partCount = 0
-    $hasFeature = $false
-    foreach ($p in $pkg.GetParts()) {
-        $partCount++
-        if ($p.Uri.ToString() -match "TIAAGENT.ADDIN") { $hasFeature = $true }
-    }
-    $pkg.Close()
-    if ($hasFeature) { Write-Ok "Feature assembly present" }
-    else { Write-Fail "Feature assembly missing!" }
-    Write-Ok "Total parts: $partCount"
-
-    # Summary
-    Write-Step 4 4 "Package summary"
-    $size = (Get-Item $addinFile).Length / 1KB
-    Write-Info "File: $addinFile"
-    Write-Info "Size: $([math]::Round($size, 1)) KB"
-    Write-Info "Version: $Version"
-    Write-Info "Publisher: Siemens.Engineering.AddIn.Publisher.exe"
-
-    Write-Host ""
-    Write-Host "Packaging completed!" -ForegroundColor Green
-    Write-Host "  To install: .\build.ps1 install" -ForegroundColor Gray
-    Write-Host "  To verify:  .\build.ps1 verify" -ForegroundColor Gray
 }
 
 # ============================================================
@@ -241,24 +308,38 @@ function Invoke-Verify {
     }
 
     Write-Step 1 4 "Opening package..."
-    $pkg = [System.IO.Packaging.Package]::Open($addinFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
-    Write-Ok "Package opened"
+    $pkg = $null
+    try {
+        $pkg = [System.IO.Packaging.Package]::Open(
+            $addinFile,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::Read
+        )
+        Write-Ok "Package opened"
 
-    Write-Step 2 4 "Checking parts..."
-    $parts = $pkg.GetParts()
-    $partList = @()
-    $hasFeature = $false
-    $hasEngineeringVersion = $false
-    $hasMeta = $false
-    $hasPermissions = $false
+        Write-Step 2 4 "Checking parts..."
+        $parts = $pkg.GetParts()
+        $partList = @()
+        $hasFeature = $false
+        $hasEngineeringVersion = $false
+        $hasMeta = $false
+        $hasPermissions = $false
 
-    foreach ($p in $parts) {
-        $uri = $p.Uri.ToString()
-        $partList += $uri
-        if ($uri -match "TIAAGENT\.ADDIN") { $hasFeature = $true }
-        if ($uri -eq "/EngineeringVersion") { $hasEngineeringVersion = $true }
-        if ($uri -match "/Meta/") { $hasMeta = $true }
-        if ($uri -match "/Permissions/") { $hasPermissions = $true }
+        foreach ($part in $parts) {
+            $uri = $part.Uri.ToString()
+            $partList += $uri
+            if ($uri -match "TIAAGENT\.ADDIN") { $hasFeature = $true }
+            if ($uri -eq "/EngineeringVersion") { $hasEngineeringVersion = $true }
+            if ($uri -match "/Meta/") { $hasMeta = $true }
+            if ($uri -match "/Permissions/") { $hasPermissions = $true }
+        }
+    }
+    finally {
+        if ($null -ne $pkg) {
+            $pkg.Close()
+            $pkg.Dispose()
+        }
     }
 
     Write-Info "Total parts: $($partList.Count)"
@@ -281,8 +362,6 @@ function Invoke-Verify {
     foreach ($uri in ($partList | Sort-Object)) {
         Write-Info "  $uri"
     }
-
-    $pkg.Close()
 
     Write-Step 4 4 "Result"
     if ($allOk) {
