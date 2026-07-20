@@ -19,6 +19,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<TiaReferenceTools>();
         services.AddSingleton<TiaCompileTools>();
         services.AddSingleton<TiaChangeTools>();
+        services.AddSingleton<TiaDiagnosticTools>();
         return services;
     }
 }

@@ -31,6 +31,7 @@ builder.Services.AddSingleton<TiaReadTools>();
 builder.Services.AddSingleton<TiaReferenceTools>();
 builder.Services.AddSingleton<TiaCompileTools>();
 builder.Services.AddSingleton<TiaChangeTools>();
+builder.Services.AddSingleton<TiaDiagnosticTools>();
 
 // Add MCP server with HTTP transport and register tool types
 builder.Services.AddMcpServer()
@@ -39,7 +40,8 @@ builder.Services.AddMcpServer()
     .WithTools<TiaReadTools>()
     .WithTools<TiaReferenceTools>()
     .WithTools<TiaCompileTools>()
-    .WithTools<TiaChangeTools>();
+    .WithTools<TiaChangeTools>()
+    .WithTools<TiaDiagnosticTools>();
 
 // Configure Kestrel to listen on loopback only
 builder.WebHost.ConfigureKestrel(options =>

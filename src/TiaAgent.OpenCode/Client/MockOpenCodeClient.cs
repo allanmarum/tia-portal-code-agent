@@ -30,6 +30,9 @@ public class MockOpenCodeClient : IOpenCodeClient
     public bool WasCreateSessionCalled { get; private set; }
     public bool WasStartTaskCalled { get; private set; }
     public string? LastTaskId { get; private set; }
+    public bool HealthCheckResult { get; set; } = true;
+    public int DelayMs { get; set; }
+    public bool SimulateFailure { get; set; }
 
     public Task<OpenCodeSessionDto> CreateSessionAsync(
         CreateOpenCodeSessionRequest request,
@@ -63,7 +66,29 @@ public class MockOpenCodeClient : IOpenCodeClient
         string taskId,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await Task.CompletedTask;
+        if (DelayMs > 0)
+        {
+            try
+            {
+                await Task.Delay(DelayMs, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                yield break;
+            }
+        }
+
+        if (SimulateFailure)
+        {
+            yield return new OpenCodeEventDto
+            {
+                EventType = "failed",
+                TaskId = taskId,
+                Message = "Simulated task failure",
+                Timestamp = DateTimeOffset.UtcNow
+            };
+            yield break;
+        }
 
         // Simulate tool call events
         yield return new OpenCodeEventDto
@@ -106,6 +131,6 @@ public class MockOpenCodeClient : IOpenCodeClient
 
     public Task<bool> HealthCheckAsync(CancellationToken cancellationToken)
     {
-        return Task.FromResult(true);
+        return Task.FromResult(HealthCheckResult);
     }
 }

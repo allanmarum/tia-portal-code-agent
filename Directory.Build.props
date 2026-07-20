@@ -9,6 +9,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
-    <NoWarn>$(NoWarn);NU1603;CA1707;CA1304;CA1305;CA1310;CA1311;CA1822</NoWarn>
+    <NoWarn>$(NoWarn);NU1603;CA1707;CA1304;CA1305;CA1310;CA1311;CA1822;CA1848</NoWarn>
   </PropertyGroup>
 </Project>
