@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>TiaAgent.Bridge</RootNamespace>
+    <Description>Local Bridge between TIA Portal Add-In and OpenCode Server</Description>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
+  </ItemGroup>
+</Project>
