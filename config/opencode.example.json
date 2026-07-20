@@ -1,14 +1,13 @@
 {
+  "$schema": "https://opencode.ai/config.json",
   "server": {
-    "url": "http://127.0.0.1:43120",
     "port": 43120
   },
   "mcp": {
-    "servers": {
-      "tia-agent": {
-        "url": "http://127.0.0.1:43121/mcp",
-        "transport": "streamable-http"
-      }
+    "tia-portal": {
+      "type": "local",
+      "command": ["tia-mcp"],
+      "enabled": true
     }
   },
   "agents": {

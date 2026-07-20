@@ -1,6 +1,3 @@
-using TiaAgent.Contracts.Dtos;
-using TiaAgent.Contracts.Events;
-
 namespace TiaAgent.Contracts.Abstractions;
 
 /// <summary>

@@ -11,11 +11,9 @@
     build       - Compiles the solution
     test        - Runs the tests
     pack        - Packages the Add-In (.addin OPC package)
-    run         - Starts the MCP server with simulator
     all         - Build + Test + Pack
     clean       - Cleans build artifacts
     install     - Copies to TIA Portal Add-Ins folder
-    dev         - Starts the development host
     verify      - Verifies the .addin package contents
 
 .EXAMPLE
@@ -26,7 +24,7 @@
 #>
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("build", "test", "pack", "run", "all", "clean", "install", "dev", "verify", "help")]
+    [ValidateSet("build", "test", "pack", "all", "clean", "install", "verify", "help")]
     [string]$Command = "help"
 )
 
@@ -344,65 +342,19 @@ function Invoke-Verify {
 }
 
 # ============================================================
-# Run -- Starts MCP server with simulator
+# MCP -- Shows info about the Czarnak MCP server
 # ============================================================
 
-function Invoke-Run {
-    Write-Header "MCP SERVER (SIMULATOR)"
-    Write-Info "Starting MCP server at http://127.0.0.1:43121/mcp"
-    Write-Info "Press Ctrl+C to stop"
+function Invoke-Mcp {
+    Write-Header "MCP SERVER (Czarnak/tia-portal-mcp)"
+    Write-Info "This project uses Czarnak's TiaMcpServer as the MCP server."
     Write-Host ""
-
-    dotnet run --project "$Root\src\TiaAgent.McpHost\TiaAgent.McpHost.csproj" --configuration $Config
-}
-
-# ============================================================
-# Dev -- Starts the development host
-# ============================================================
-
-function Invoke-Dev {
-    Write-Header "DEVELOPMENT HOST"
-    Write-Info "Starting development console..."
+    Write-Host "Install:   dotnet tool install -g TiaMcpServer" -ForegroundColor Cyan
+    Write-Host "Validate:  tia-mcp doctor" -ForegroundColor Cyan
+    Write-Host "Inspect:   npx -y @modelcontextprotocol/inspector tia-mcp" -ForegroundColor Cyan
     Write-Host ""
-
-    $tempProject = "$Root\artifacts\TiaAgent.DevHost\TiaAgent.DevHost.csproj"
-    $tempDir = Split-Path $tempProject -Parent
-
-    if (!(Test-Path $tempDir)) {
-        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-    }
-
-    $projContent = @"
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
-  </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="$Root\src\TiaAgent.AddIn\TiaAgent.AddIn.csproj" />
-    <ProjectReference Include="$Root\src\TiaAgent.Simulator\TiaAgent.Simulator.csproj" />
-    <ProjectReference Include="$Root\src\TiaAgent.Application\TiaAgent.Application.csproj" />
-    <ProjectReference Include="$Root\src\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
-  </ItemGroup>
-</Project>
-"@
-    $projContent | Out-File -FilePath $tempProject -Encoding UTF8
-
-    $programContent = @"
-using TiaAgent.AddIn;
-using TiaAgent.Application.Common;
-using TiaAgent.Application.Hashing;
-using TiaAgent.Simulator;
-
-var hashService = new ContentHashService();
-var clock = new SystemClock();
-var simulator = new SimulatorTiaProjectService(hashService, clock);
-var host = new DevelopmentHost(simulator, simulator);
-await host.RunAsync();
-"@
-    $programContent | Out-File -FilePath "$tempDir\Program.cs" -Encoding UTF8
-
-    dotnet run --project $tempProject
+    Write-Host "The MCP server is launched automatically by OpenCode via stdio transport." -ForegroundColor Gray
+    Write-Host "Config: config/opencode.json" -ForegroundColor Gray
 }
 
 # ============================================================
@@ -481,8 +433,7 @@ function Show-Help {
     Write-Host "  test      Runs all tests" -ForegroundColor White
     Write-Host "  pack      Generates the .addin OPC package" -ForegroundColor White
     Write-Host "  verify    Verifies the .addin package contents" -ForegroundColor White
-    Write-Host "  run       Starts the MCP server with simulator" -ForegroundColor White
-    Write-Host "  dev       Starts the development host (console)" -ForegroundColor White
+    Write-Host "  mcp       Shows MCP server info (Czarnak/tia-portal-mcp)" -ForegroundColor White
     Write-Host "  install   Copies the .addin to TIA Portal folder" -ForegroundColor White
     Write-Host "  clean     Removes build artifacts" -ForegroundColor White
     Write-Host "  all       Build + Test + Pack" -ForegroundColor White
@@ -506,8 +457,7 @@ switch ($Command) {
     "test"    { Invoke-Test }
     "pack"    { Invoke-Pack }
     "verify"  { Invoke-Verify }
-    "run"     { Invoke-Run }
-    "dev"     { Invoke-Dev }
+    "mcp"     { Invoke-Mcp }
     "clean"   { Invoke-Clean }
     "install" { Invoke-Install }
     "all"     { Invoke-Build; Invoke-Test; Invoke-Pack }
