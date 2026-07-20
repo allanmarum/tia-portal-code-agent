@@ -105,12 +105,21 @@ function Invoke-Build {
     $tests = Get-ChildItem "$Root\tests\*\*.csproj" -ErrorAction SilentlyContinue
     Write-Ok "$($tests.Count) test projects found"
 
-    Write-Step 3 3 "Verifying artifacts..."
+    Write-Step 3 4 "Verifying artifacts..."
     $addinDll = "$Root\src\TiaAgent.AddIn\bin\$Config\net48\TiaAgent.AddIn.dll"
     if (Test-Path $addinDll) {
         Write-Ok "TiaAgent.AddIn.dll built"
     } else {
         Write-Fail "TiaAgent.AddIn.dll not found at: $addinDll"
+        exit 1
+    }
+
+    Write-Step 4 4 "Verifying Bridge..."
+    $bridgeDll = "$Root\src\TiaAgent.Bridge\bin\$Config\net8.0\TiaAgent.Bridge.dll"
+    if (Test-Path $bridgeDll) {
+        Write-Ok "TiaAgent.Bridge.dll built"
+    } else {
+        Write-Fail "TiaAgent.Bridge.dll not found at: $bridgeDll"
         exit 1
     }
 
