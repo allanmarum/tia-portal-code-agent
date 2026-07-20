@@ -23,8 +23,23 @@ The base assembly exposes provider classes for major UI locations:
 | `ProjectLibraryTreeAddInProvider` | Project library tree |
 | `GlobalLibraryTreeAddInProvider` | Global library tree |
 
-A provider returns one or more `ContextMenuAddIn` implementations for its scope. Providers are disposable and their lifetime is controlled by the Add-In framework.
 
+### VCI providers
+
+| Provider | UI scope |
+|---|---|
+| `VciEditorAddInProvider` | VCI workspace editor |
+| `VciImportAddInProvider` | VCI import |
+| `VciWorkspaceRepositoryAddInProvider` | VCI repository export |
+
+### Specialized providers (Step7 and Safety assemblies)
+
+| Provider | Assembly | Purpose |
+|---|---|---|
+| `CaxAddInProvider` | `AddIn.Step7` | CAx import/export workflows |
+| `SafetyCompileAddInProvider` | `AddIn.Safety` | Safety compile workflows |
+
+A provider returns one or more `ContextMenuAddIn` implementations for its scope. Providers are disposable and their lifetime is controlled by the Add-In framework. For packaging, deployment, and `Config.xml` details, see `ADDIN_TECHNICAL_SPEC.md`.
 ### Project rule
 
 Provider classes SHOULD be thin composition roots. They SHOULD construct menu definitions and delegate engineering work to application services. They MUST NOT contain long-running business logic.

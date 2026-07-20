@@ -2,6 +2,7 @@
   <PropertyGroup>
     <TiaPortalVersion>V21</TiaPortalVersion>
     <TiaPublicApiDir Condition="'$(TiaPublicApiDir)' == ''">$(ProgramFiles)\Siemens\Automation\Portal V21\PublicAPI\V21\net48</TiaPublicApiDir>
+    <TiaAddInApiDir Condition="'$(TiaAddInApiDir)' == ''">$(TiaPublicApiDir)</TiaAddInApiDir>
     <Version>0.1.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
@@ -10,5 +11,11 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <NoWarn>$(NoWarn);NU1603;CA1707;CA1304;CA1305;CA1310;CA1311;CA1822;CA1848</NoWarn>
+  </PropertyGroup>
+
+  <!-- Detect Siemens assemblies early so csproj conditionals can use this -->
+  <PropertyGroup>
+    <SiemensAssembliesExist Condition="Exists('$(TiaPublicApiDir)\Siemens.Engineering.Base.dll')">true</SiemensAssembliesExist>
+    <SiemensAssembliesExist Condition="'$(SiemensAssembliesExist)' == ''">false</SiemensAssembliesExist>
   </PropertyGroup>
 </Project>

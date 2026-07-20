@@ -207,7 +207,8 @@ Responsible for:
 - displaying progress, results, diff, and approval;
 - allowing cancellation;
 - hosting MCP in the MVP or IPC in the robust architecture;
-- integrating application services into the TIA host.
+- integrating application services into the TIA host;
+- conforming to the `.addin` package structure, `Config.xml` schema, and deployment model defined in `ADDIN_TECHNICAL_SPEC.md`.
 
 Not responsible for:
 

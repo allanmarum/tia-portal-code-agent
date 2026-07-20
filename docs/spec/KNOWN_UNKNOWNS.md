@@ -18,6 +18,8 @@ Evidence required:
 - Publisher file version;
 - framework requirement.
 
+**Partially answered**: The Siemens Development Templates v2.0.145 support V18 and V19. V21 is not yet in the official templates but uses the same csproj pattern and `Config.xml` schema. The `Convert-AddInProject.ps1` script can upgrade from V18/V19 to later versions (forward upgrades only). The minimum supported version is V18. Target framework is `net48`.
+
 ## KU-002 - Exact supported selection types
 
 Question:
@@ -66,6 +68,8 @@ Evidence required:
 - controlled stress test;
 - no UI freeze.
 
+**Partially answered**: The Add-In framework documentation (`02-addin-framework.md` sections 5 and 10) defines threading constraints: menu status callbacks MUST be fast, deterministic, and side-effect free; the UI thread MUST NOT be blocked while waiting for an LLM or external process; `ProgressProvider` MUST be used for user-visible long operations. Full stress testing with TIA Portal V21 is still required.
+
 ## KU-006 - Add-In UI model
 
 Question:
@@ -77,6 +81,8 @@ Evidence required:
 - target-version Add-In documentation;
 - UX prototype;
 - permission impact.
+
+**Partially answered**: The official templates only provide context-menu providers (`ProjectTreeAddInProvider`, `DevicesAndNetworksAddInProvider`, etc.) and VCI workspace providers. No embedded panel mechanism is exposed in the Add-In API. For result display, the Add-In can use `MessageBoxProvider.ShowNotification()` or `ShowConfirmation()`, or launch a separate WPF window via `Siemens.Engineering.AddIn.Utilities.Process`. The Add-In uses WinForms (`UseWindowsForms=true` in csproj), which means WPF windows are also available.
 
 ## KU-007 - OpenCode server API
 
@@ -105,6 +111,8 @@ Evidence required:
 Fallback:
 
 - external MCP host with named-pipe proxy.
+
+**Partially answered**: The templates confirm the Add-In targets `net48` (`FrameworkVersion` is hardcoded to `net48` in the template). This constrains MCP SDK options: the `ModelContextProtocol.AspNetCore` package requires net8.0, so the MCP server MUST run in a separate process. The robust architecture (named-pipe IPC) is therefore the default path, not just a fallback.
 
 ## KU-009 - Package deployment permissions
 
