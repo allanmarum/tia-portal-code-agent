@@ -3,12 +3,13 @@ using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
-using System.Text.Json;
-using System.Windows;
+using System.Threading;
 using Siemens.Engineering;
 using Siemens.Engineering.AddIn;
 using Siemens.Engineering.AddIn.Menu;
+using TiaAgent.AddIn.Ui;
 using TiaAgent.Contracts.Abstractions;
+using TiaAgent.Contracts.Errors;
 
 namespace TiaAgent.AddIn.Providers;
 
@@ -22,7 +23,6 @@ public sealed class ProjectTreeProvider : ProjectTreeAddInProvider
 
 public sealed class TiaAgentContextMenu : ContextMenuAddIn
 {
-    private const string OpenCodeUrl = "http://127.0.0.1:43120";
     private const string McpEndpoint = "http://127.0.0.1:43121/mcp";
 
     public TiaAgentContextMenu() : base("AI Assistant") { }
@@ -57,7 +57,7 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
             var enumerator = objects.GetEnumerator();
             if (!enumerator.MoveNext())
             {
-                MessageBox.Show("No object selected.", "TIA Agent", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AssistantPanelFactory.ShowWarning("No object selected.");
                 return;
             }
 
@@ -66,12 +66,13 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
             var objType = selectedObj.GetType().Name;
             Log("Selected: " + objName + " (" + objType + ")");
 
-            // Try OpenCode first, fallback to direct MCP
+            // Use orchestrator for OpenCode, fallback to direct MCP
             string result;
-            if (IsOpenCodeRunning())
+            var orchestrator = AddInServices.Orchestrator;
+            if (orchestrator.IsOpenCodeAvailableAsync(CancellationToken.None).GetAwaiter().GetResult())
             {
-                Log("Using OpenCode agent runtime");
-                result = RunViaOpenCode(action, taskDescription, objName, objType);
+                Log("Using OpenCode agent runtime via orchestrator");
+                result = RunViaOrchestrator(orchestrator, action, taskDescription, objName, objType);
             }
             else
             {
@@ -80,80 +81,60 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
             }
 
             Log("Result length: " + result.Length);
-            MessageBox.Show(result, "TIA Agent - " + action, MessageBoxButton.OK, MessageBoxImage.Information);
+            AssistantPanelFactory.ShowResult(action, result);
+        }
+        catch (TiaErrorException ex)
+        {
+            Log("TIA ERROR: " + ex.Error.Code + " - " + ex.Error.Message);
+            var userMessage = ErrorMapper.ToUserMessage(ex.Error);
+            AssistantPanelFactory.ShowError(userMessage);
         }
         catch (Exception ex)
         {
             Log("ERROR: " + ex.ToString());
-            MessageBox.Show("Error: " + ex.Message, "TIA Agent", MessageBoxButton.OK, MessageBoxImage.Error);
+            var error = new TiaError { Code = TiaErrorCode.INTERNAL_ERROR, Message = ex.Message };
+            var userMessage = ErrorMapper.ToUserMessage(error);
+            AssistantPanelFactory.ShowError(userMessage);
         }
     }
 
-    private bool IsOpenCodeRunning()
+    private string RunViaOrchestrator(
+        IOpenCodeOrchestrator orchestrator,
+        string action,
+        string taskDescription,
+        string objName,
+        string objType)
     {
-        try
+        var correlationId = "tia-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        var message = taskDescription + " - Object: " + objName + " (" + objType + ")";
+
+        var descriptor = new OpenCodeTaskDescriptor
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-            var resp = client.GetAsync(OpenCodeUrl + "/health").GetAwaiter().GetResult();
-            return resp.IsSuccessStatusCode;
-        }
-        catch { return false; }
-    }
+            Action = action,
+            Message = message,
+            CorrelationId = correlationId,
+            TiaSessionId = "tia-session",
+            ProjectId = "tia-project",
+            AgentId = "tia-explain"
+        };
 
-    private string RunViaOpenCode(string action, string taskDescription, string objName, string objType)
-    {
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        var result = orchestrator.ExecuteTaskAsync(descriptor, CancellationToken.None)
+            .GetAwaiter().GetResult();
 
-        // 1. Create session
-        var sessionBody = "{\"correlationId\":\"tia-" + Guid.NewGuid().ToString("N").Substring(0, 8) + "\",\"tiaSessionId\":\"tia-sim-001\",\"projectId\":\"sim-project-001\",\"defaultAgent\":\"tia-explain\"}";
-        var sessionResp = PostJson(client, OpenCodeUrl + "/api/sessions", sessionBody);
-        var session = JsonSerializer.Deserialize<JsonElement>(sessionResp);
-        var sessionId = session.GetProperty("sessionId").GetString();
-        Log("OpenCode session: " + sessionId);
-
-        // 2. Start task
-        var taskBody = "{\"sessionId\":\"" + sessionId + "\",\"correlationId\":\"tia-" + Guid.NewGuid().ToString("N").Substring(0, 8) + "\",\"agentId\":\"tia-explain\",\"message\":\"" + taskDescription + " - Object: " + objName + " (" + objType + ")\",\"selectionToken\":\"sel-001\"}";
-        var taskResp = PostJson(client, OpenCodeUrl + "/api/sessions/" + sessionId + "/tasks", taskBody);
-        var task = JsonSerializer.Deserialize<JsonElement>(taskResp);
-        var taskId = task.GetProperty("taskId").GetString();
-        Log("OpenCode task: " + taskId);
-
-        // 3. Watch for completion
-        var watchReq = new HttpRequestMessage(HttpMethod.Get, OpenCodeUrl + "/api/tasks/" + taskId + "/events");
-        watchReq.Headers.Add("Accept", "text/event-stream");
-        var watchResp = client.SendAsync(watchReq, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
-
-        var sb = new StringBuilder();
-        using var stream = watchResp.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
-        using var reader = new StreamReader(stream);
-        while (!reader.EndOfStream)
+        if (result.Success)
         {
-            var line = reader.ReadLine();
-            if (string.IsNullOrEmpty(line)) continue;
-            if (line.StartsWith("data: ", StringComparison.Ordinal))
-            {
-                var evt = JsonSerializer.Deserialize<JsonElement>(line.Substring(6));
-                var evtType = evt.GetProperty("eventType").GetString();
-                var msg = evt.TryGetProperty("message", out var m) ? m.GetString() : "";
-                Log("Event: " + evtType + " - " + msg);
-
-                if (evtType == "completed")
-                {
-                    sb.AppendLine(msg);
-                    break;
-                }
-                else if (evtType == "tool_call")
-                {
-                    sb.AppendLine("[Tool] " + msg);
-                }
-                else if (evtType == "progress")
-                {
-                    sb.AppendLine("[...] " + msg);
-                }
-            }
+            return result.Response ?? "Task completed (no output)";
         }
 
-        return sb.Length > 0 ? sb.ToString() : "Task completed (no output)";
+        // Map error to user-friendly message
+        if (!string.IsNullOrEmpty(result.ErrorCode) &&
+            Enum.TryParse<TiaErrorCode>(result.ErrorCode, out var errorCode))
+        {
+            var error = new TiaError { Code = errorCode, Message = result.Error ?? "Unknown error" };
+            return ErrorMapper.ToUserMessage(error);
+        }
+
+        return result.Error ?? "An unexpected error occurred.";
     }
 
     private string RunViaMcp(string objName, string objType)
@@ -208,16 +189,6 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
             }
         }
         return content;
-    }
-
-    private string PostJson(HttpClient client, string url, string json)
-    {
-        var req = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = new StringContent(json, Encoding.UTF8, "application/json")
-        };
-        var resp = client.SendAsync(req).GetAwaiter().GetResult();
-        return resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
     }
 
     private void Log(string message)

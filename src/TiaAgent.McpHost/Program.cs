@@ -8,10 +8,14 @@ using TiaAgent.Application.Hashing;
 using TiaAgent.Application.Identity;
 using TiaAgent.Contracts.Abstractions;
 using TiaAgent.Mcp;
+using TiaAgent.Mcp.Auth;
 using TiaAgent.Mcp.Tools;
 using TiaAgent.Simulator;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Register authentication (ephemeral bearer token per server lifetime)
+builder.Services.AddSingleton<SessionTokenProvider>();
 
 // Register core infrastructure
 builder.Services.AddSingleton<IClock, SystemClock>();
@@ -50,6 +54,14 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 var app = builder.Build();
+
+// Display the ephemeral authentication token for configuring clients
+var tokenProvider = app.Services.GetRequiredService<SessionTokenProvider>();
+Console.WriteLine($"[MCP Auth] Ephemeral token: {tokenProvider.GetToken()}");
+Console.WriteLine("[MCP Auth] Configure OpenCode to use: Authorization: Bearer <token>");
+
+// Apply authentication middleware before MCP endpoint
+app.UseMiddleware<McpAuthenticationMiddleware>();
 
 app.MapMcp("/mcp");
 

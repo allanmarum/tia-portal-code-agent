@@ -4,6 +4,7 @@
     <RootNamespace>TiaAgent.AddIn</RootNamespace>
     <Description>TIA Portal V21 Add-In — UI, commands, selection capture, OpenCode integration</Description>
     <PlatformTarget>AnyCPU</PlatformTarget>
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,7 +20,10 @@
 
   <ItemGroup>
     <Reference Include="System.Net.Http" />
+    <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
     <Reference Include="Siemens.Engineering.Base">
       <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.Base.dll</HintPath>
       <Private>false</Private>
