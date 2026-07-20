@@ -1,5 +1,7 @@
 # Task: Fix System.Text.Json Assembly Loading in Add-In
 
+> **Status: RESOLVED** — The entire dependency chain (System.Text.Json, Microsoft.Bcl.AsyncInterfaces, Microsoft.Extensions.*) has been removed from the Add-In by introducing the Bridge architecture. The Add-In now only references TiaAgent.Contracts (netstandard2.0, no modern dependencies). See `README.md` for the current architecture.
+
 ## Problem
 
 The Add-In fails at runtime with:
