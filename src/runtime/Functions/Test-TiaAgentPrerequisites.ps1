@@ -2,13 +2,16 @@ function Test-TiaAgentPrerequisites {
     <#
     .SYNOPSIS
         Validates all required prerequisites for the TIA Agent runtime.
+    .PARAMETER RuntimeId
+        Which runtime to validate (mimo, opencode, claude). Defaults to opencode.
     .OUTPUTS
         PSCustomObject with IsValid, Errors, Warnings properties.
     #>
     [CmdletBinding()]
     param(
         [string]$TiaAgentRoot = (Join-Path $env:LOCALAPPDATA 'TiaAgent'),
-        [string]$RepoRoot = (Get-Item $PSScriptRoot).Parent.Parent.Parent.FullName
+        [string]$RepoRoot = (Get-Item $PSScriptRoot).Parent.Parent.Parent.FullName,
+        [string]$RuntimeId = 'opencode'
     )
 
     $errors = @()
@@ -62,16 +65,33 @@ function Test-TiaAgentPrerequisites {
         }
     }
 
-    # 6. OpenCode CLI (mimo)
-    $mimo = Get-Command mimo -ErrorAction SilentlyContinue
-    if (-not $mimo) {
-        $errors += "OpenCode CLI (mimo) not found. Install @mimo-ai/cli"
+    # 6. Runtime executable (runtime-specific)
+    $runtimeExe = switch ($RuntimeId) {
+        'mimo'     { 'mimo' }
+        'opencode' { 'opencode' }
+        'claude'   { 'claude' }
+        default    { $RuntimeId }
+    }
+    $runtimeCmd = Get-Command $runtimeExe -ErrorAction SilentlyContinue
+    if (-not $runtimeCmd) {
+        # Fallback: opencode can use mimo if opencode CLI is not found
+        if ($RuntimeId -eq 'opencode') {
+            $mimoCmd = Get-Command mimo -ErrorAction SilentlyContinue
+            if ($mimoCmd) {
+                $runtimeCmd = $mimoCmd
+            }
+        }
+    }
+    if (-not $runtimeCmd) {
+        $errors += "Runtime executable '$runtimeExe' not found for runtime '$RuntimeId'"
     }
 
-    # 7. MCP server (tia-mcp)
-    $tiaMcp = Get-Command tia-mcp -ErrorAction SilentlyContinue
-    if (-not $tiaMcp) {
-        $warnings += "tia-mcp not found. Install: dotnet tool install -g TiaMcpServer"
+    # 7. MCP server (tia-mcp) — only needed for opencode runtime
+    if ($RuntimeId -eq 'opencode') {
+        $tiaMcp = Get-Command tia-mcp -ErrorAction SilentlyContinue
+        if (-not $tiaMcp) {
+            $warnings += "tia-mcp not found. Install: dotnet tool install -g TiaMcpServer"
+        }
     }
 
     # 8. TiaAgent directory writable
@@ -93,17 +113,19 @@ function Test-TiaAgentPrerequisites {
         $errors += "TiaAgent directory is not writable: $TiaAgentRoot"
     }
 
-    # 9. OpenCode config
-    $opencodeConfig = Join-Path $RepoRoot 'config\opencode.json'
-    if (-not (Test-Path $opencodeConfig)) {
-        $errors += "OpenCode config not found: config\opencode.json"
-    }
-    else {
-        try {
-            Get-Content $opencodeConfig -Raw | ConvertFrom-Json | Out-Null
+    # 9. Runtime-specific config (opencode needs config/opencode.json)
+    if ($RuntimeId -eq 'opencode') {
+        $opencodeConfig = Join-Path $RepoRoot 'config\opencode.json'
+        if (-not (Test-Path $opencodeConfig)) {
+            $warnings += "OpenCode config not found: config\opencode.json"
         }
-        catch {
-            $errors += "OpenCode config is invalid JSON: config\opencode.json"
+        else {
+            try {
+                Get-Content $opencodeConfig -Raw | ConvertFrom-Json | Out-Null
+            }
+            catch {
+                $warnings += "OpenCode config is invalid JSON: config\opencode.json"
+            }
         }
     }
 

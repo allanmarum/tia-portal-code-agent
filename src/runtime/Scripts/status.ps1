@@ -176,10 +176,19 @@ else {
         "Not running"
     }
     $opencodeColor = if ($status.opencode.running -and $status.opencode.healthy) { 'Green' } elseif ($status.opencode.running) { 'Yellow' } else { 'Red' }
-    Write-Host ("OpenCode   : {0}" -f $opencodeText) -ForegroundColor $opencodeColor
+    Write-Host ("Runtime    : {0}" -f $opencodeText) -ForegroundColor $opencodeColor
+
+    # Show runtime identity if available
+    if ($manifest -and $manifest.runtime) {
+        $rt = $manifest.runtime
+        $rtName = if ($rt.displayName) { $rt.displayName } else { $rt.id }
+        $rtMode = if ($rt.mode) { $rt.mode } else { 'unknown' }
+        $rtHealthy = if ($rt.healthy) { 'yes' } else { 'no' }
+        Write-Host ("           : {0} (mode={1}, healthy={2})" -f $rtName, $rtMode, $rtHealthy) -ForegroundColor Gray
+    }
 
     Write-Host ""
-    Write-Host "Runtime:" -ForegroundColor Cyan
+    Write-Host "Runtime manifest:" -ForegroundColor Cyan
     Write-Host $status.runtimePath -ForegroundColor Gray
     Write-Host ""
 }

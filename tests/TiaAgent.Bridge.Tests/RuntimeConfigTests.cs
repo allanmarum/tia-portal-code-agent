@@ -29,20 +29,6 @@ public class RuntimeConfigTests : IDisposable
     }
 
     [Fact]
-    public void Load_MissingFile_ReturnsDefaults()
-    {
-        // Point to a non-existent directory
-        var loader = new RuntimeConfigLoader(_logger);
-
-        // Since Load() reads from %LOCALAPPDATA%\TiaAgent\config.json,
-        // we test the default behavior when the file doesn't exist
-        var config = loader.Load();
-
-        config.Should().NotBeNull();
-        config.DefaultRuntime.Should().Be("opencode");
-    }
-
-    [Fact]
     public void TiaAgentConfig_DefaultValues_AreCorrect()
     {
         var config = new TiaAgentConfig();

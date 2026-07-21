@@ -37,7 +37,7 @@ function New-TiaAgentRuntimeManifest {
         [ValidateSet('pending', 'starting', 'healthy', 'unhealthy', 'stopped', 'failed')]
         [string]$BridgeStatus = 'pending',
 
-        [ValidateSet('pending', 'starting', 'healthy', 'unhealthy', 'stopped', 'failed')]
+        [ValidateSet('pending', 'starting', 'healthy', 'unhealthy', 'stopped', 'failed', 'skipped')]
         [string]$OpenCodeStatus = 'pending',
 
         [int]$BridgePid = 0,

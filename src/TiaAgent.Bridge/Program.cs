@@ -147,23 +147,43 @@ public static class Program
         var claudeConfig = GetRuntimeEntry(runtimeConfig, "claude");
         if (claudeConfig?.Enabled != false)
         {
-            // Try to find tia-mcp command for MCP config generation
+            // Try to find tia-mcp command for MCP config generation.
+            // Check known locations: PATH, .NET global tools directory.
             string? mcpCommand = null;
-            try
+            var mcpSearchPaths = new[] { "tia-mcp" };
+            var dotnetToolsDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".dotnet", "tools");
+            if (Directory.Exists(dotnetToolsDir))
             {
-                var mcpCheck = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "tia-mcp",
-                    Arguments = "--version",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow = true
-                });
-                mcpCheck?.WaitForExit(3000);
-                if (mcpCheck?.ExitCode == 0)
-                    mcpCommand = "tia-mcp";
+                var mcpExePath = Path.Combine(dotnetToolsDir, "tia-mcp.exe");
+                if (File.Exists(mcpExePath))
+                    mcpSearchPaths = new[] { "tia-mcp", mcpExePath };
             }
-            catch { }
+
+            foreach (var candidate in mcpSearchPaths)
+            {
+                try
+                {
+                    var mcpCheck = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = candidate,
+                        Arguments = "--version",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true
+                    });
+                    mcpCheck?.WaitForExit(3000);
+                    if (mcpCheck?.ExitCode == 0)
+                    {
+                        mcpCommand = candidate;
+                        break;
+                    }
+                }
+                catch { }
+            }
+            logger.Info($"RegisterRuntimes: tia-mcp {(mcpCommand != null ? $"found at '{mcpCommand}'" : "not found")}");
 
             var claudeRuntime = new ClaudeCodeRuntime(
                 logger,

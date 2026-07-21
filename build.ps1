@@ -86,6 +86,15 @@ function Write-Warn($text) {
     Write-Host "  WARN: $text" -ForegroundColor DarkYellow
 }
 
+function Stop-StaleDotnetHosts {
+    $stale = Get-Process -Name "dotnet" -ErrorAction SilentlyContinue
+    if ($stale) {
+        Write-Info "Stopping $($stale.Count) stale dotnet.exe process(es) to release file locks..."
+        $stale | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+    }
+}
+
 function Remove-FileWithRetry {
     [CmdletBinding()]
     param(
@@ -129,20 +138,22 @@ function Remove-FileWithRetry {
 
 function Invoke-Build {
     Write-Header "BUILD"
-    Write-Step 1 3 "Compiling solution..."
+    Write-Step 1 4 "Releasing stale file locks..."
+    Stop-StaleDotnetHosts
 
+    Write-Step 2 4 "Compiling solution..."
     dotnet build "$Root\TiaAgent.sln" --configuration $Config --verbosity quiet
     if ($LASTEXITCODE -ne 0) { Write-Fail "Build failed"; exit 1 }
     Write-Ok "Solution compiled"
 
-    Write-Step 2 3 "Verifying projects..."
+    Write-Step 3 4 "Verifying projects..."
     $projects = Get-ChildItem "$Root\src\*\*.csproj" -ErrorAction SilentlyContinue
     Write-Ok "$($projects.Count) source projects found"
 
     $tests = Get-ChildItem "$Root\tests\*\*.csproj" -ErrorAction SilentlyContinue
     Write-Ok "$($tests.Count) test projects found"
 
-    Write-Step 3 4 "Verifying artifacts..."
+    Write-Step 4 4 "Verifying artifacts..."
     $addinDll = "$Root\src\TiaAgent.AddIn\bin\$Config\net48\TiaAgent.AddIn.dll"
     if (Test-Path $addinDll) {
         Write-Ok "TiaAgent.AddIn.dll built"
@@ -151,7 +162,6 @@ function Invoke-Build {
         exit 1
     }
 
-    Write-Step 4 4 "Verifying Bridge..."
     $bridgeDll = "$Root\src\TiaAgent.Bridge\bin\$Config\net8.0\TiaAgent.Bridge.dll"
     if (Test-Path $bridgeDll) {
         Write-Ok "TiaAgent.Bridge.dll built"

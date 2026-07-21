@@ -71,7 +71,7 @@ public sealed class ProcessRunner : IDisposable
                     startInfo.Environment[kvp.Key] = kvp.Value;
             }
 
-            _logger.Info($"ProcessRunner: starting '{executable}' with args: {Truncate(arguments, 200)}");
+            _logger.Info($"ProcessRunner: starting '{executable}' with args: {Truncate(arguments, 500)}");
 
             process = new Process { StartInfo = startInfo };
             process.Start();

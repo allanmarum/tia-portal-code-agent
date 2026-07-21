@@ -5,8 +5,8 @@
 
 .DESCRIPTION
     Idempotent bootstrap and supervisor for TIA Portal Code Agent services.
-    Starts Bridge and OpenCode, manages ports, publishes runtime manifest,
-    and monitors child processes.
+    Starts Bridge and the selected runtime, manages ports, publishes runtime
+    manifest, and monitors child processes.
 
 .PARAMETER Config
     Path to settings.json (defaults to %LOCALAPPDATA%\TiaAgent\config\settings.json)
@@ -59,11 +59,11 @@ Write-Host "  Instance: $instanceId" -ForegroundColor Green
 # Set up cleanup on exit
 $supervisorPid = $PID
 $bridgeProcess = $null
-$opencodeProcess = $null
+$runtimeProcess = $null
 $shutdownRequested = $false
 
 $cleanup = {
-    param($InstanceId, $TiaAgentRoot, $Mutex, $LockFile, $BridgeProcess, $OpenCodeProcess)
+    param($InstanceId, $TiaAgentRoot, $Mutex, $LockFile, $BridgeProcess, $RuntimeProcess)
 
     Write-TiaAgentLog -Level 'INFO' -InstanceId $InstanceId -Event 'shutdown_start' -Message "Supervisor shutting down..."
 
@@ -71,8 +71,8 @@ $cleanup = {
     if ($BridgeProcess -and -not $BridgeProcess.HasExited) {
         Stop-TiaAgentService -Process $BridgeProcess -ServiceName 'bridge' -RuntimeInstanceId $InstanceId
     }
-    if ($OpenCodeProcess -and -not $OpenCodeProcess.HasExited) {
-        Stop-TiaAgentService -Process $OpenCodeProcess -ServiceName 'opencode' -RuntimeInstanceId $InstanceId
+    if ($RuntimeProcess -and -not $RuntimeProcess.HasExited) {
+        Stop-TiaAgentService -Process $RuntimeProcess -ServiceName 'runtime' -RuntimeInstanceId $InstanceId
     }
 
     # Update manifest
@@ -105,22 +105,7 @@ try {
     Initialize-TiaAgentPaths -TiaAgentRoot $tiaAgentRoot
     Write-Host "  Root: $tiaAgentRoot" -ForegroundColor Green
 
-    # Step 3: Validate prerequisites
-    Write-Host "[3/16] Validating prerequisites..." -ForegroundColor Yellow
-    $prereqs = Test-TiaAgentPrerequisites -TiaAgentRoot $tiaAgentRoot -RepoRoot $RepoRoot
-    if (-not $prereqs.IsValid) {
-        Write-Host "  FAILED:" -ForegroundColor Red
-        foreach ($err in $prereqs.Errors) {
-            Write-Host "    - $err" -ForegroundColor Red
-        }
-        throw "Prerequisites validation failed"
-    }
-    if ($prereqs.Warnings.Count -gt 0) {
-        foreach ($warn in $prereqs.Warnings) {
-            Write-Host "  WARNING: $warn" -ForegroundColor DarkYellow
-        }
-    }
-    Write-Host "  Prerequisites OK" -ForegroundColor Green
+    # Step 3: Validate prerequisites (deferred until runtime is known — see step 5b)
 
     # Step 4: Clean stale runtime state
     Write-Host "[4/16] Checking for stale runtime..." -ForegroundColor Yellow
@@ -140,27 +125,66 @@ try {
     $runtimeConfigPath = Join-Path $tiaAgentRoot 'config.json'
     $defaultRuntime = 'opencode'
     $runtimeConfig = $null
+    $runtimeMode = 'cli'
     if (Test-Path $runtimeConfigPath) {
         try {
             $runtimeConfig = Get-Content $runtimeConfigPath -Raw | ConvertFrom-Json
             if ($runtimeConfig.defaultRuntime) {
                 $defaultRuntime = $runtimeConfig.defaultRuntime
             }
-            Write-Host "  Runtime config loaded: default=$defaultRuntime" -ForegroundColor Green
+            # Determine mode for the selected runtime
+            $runtimeEntry = $null
+            if ($runtimeConfig.runtimes -and $runtimeConfig.runtimes.$defaultRuntime) {
+                $runtimeEntry = $runtimeConfig.runtimes.$defaultRuntime
+            }
+            if ($runtimeEntry -and $runtimeEntry.mode) {
+                $runtimeMode = $runtimeEntry.mode
+            } elseif ($defaultRuntime -eq 'opencode') {
+                $runtimeMode = 'server'
+            }
+            Write-Host "  Runtime config loaded: default=$defaultRuntime, mode=$runtimeMode" -ForegroundColor Green
         }
         catch {
             Write-Host "  WARNING: Failed to parse runtime config: $($_.Exception.Message)" -ForegroundColor DarkYellow
         }
     } else {
-        Write-Host "  No runtime config found, using default: $defaultRuntime" -ForegroundColor Gray
+        # No config file — opencode defaults to server mode
+        if ($defaultRuntime -eq 'opencode') { $runtimeMode = 'server' }
+        Write-Host "  No runtime config found, using default: $defaultRuntime ($runtimeMode)" -ForegroundColor Gray
     }
+
+    $runtimeNeedsServer = ($runtimeMode -eq 'server')
+
+    # Step 3 (deferred): Validate prerequisites for the selected runtime
+    Write-Host "[3/16] Validating prerequisites..." -ForegroundColor Yellow
+    $prereqs = Test-TiaAgentPrerequisites -TiaAgentRoot $tiaAgentRoot -RepoRoot $RepoRoot -RuntimeId $defaultRuntime
+    if (-not $prereqs.IsValid) {
+        Write-Host "  FAILED:" -ForegroundColor Red
+        foreach ($err in $prereqs.Errors) {
+            Write-Host "    - $err" -ForegroundColor Red
+        }
+        throw "Prerequisites validation failed"
+    }
+    if ($prereqs.Warnings.Count -gt 0) {
+        foreach ($warn in $prereqs.Warnings) {
+            Write-Host "  WARNING: $warn" -ForegroundColor DarkYellow
+        }
+    }
+    Write-Host "  Prerequisites OK" -ForegroundColor Green
 
     # Step 6: Allocate ports
     Write-Host "[6/16] Allocating ports..." -ForegroundColor Yellow
     $bridgePort = Get-TiaAgentPort -ServiceName 'bridge' -PreferredPort $settings.preferredPorts.bridge -RangeStart $settings.portRange.start -RangeEnd $settings.portRange.end
-    $opencodePort = Get-TiaAgentPort -ServiceName 'opencode' -PreferredPort $settings.preferredPorts.opencode -RangeStart $settings.portRange.start -RangeEnd $settings.portRange.end
     Write-Host "  Bridge: $bridgePort" -ForegroundColor Green
-    Write-Host "  OpenCode: $opencodePort" -ForegroundColor Green
+
+    $runtimePort = 0
+    if ($runtimeNeedsServer) {
+        $preferredRuntimePort = if ($settings.preferredPorts.opencode) { $settings.preferredPorts.opencode } else { 43120 }
+        $runtimePort = Get-TiaAgentPort -ServiceName $defaultRuntime -PreferredPort $preferredRuntimePort -RangeStart $settings.portRange.start -RangeEnd $settings.portRange.end
+        Write-Host "  Runtime server: $runtimePort" -ForegroundColor Green
+    } else {
+        Write-Host "  Runtime server: not needed (CLI mode)" -ForegroundColor Gray
+    }
 
     # Step 7: Generate transient credentials
     Write-Host "[7/16] Generating credentials..." -ForegroundColor Yellow
@@ -184,7 +208,7 @@ try {
         'claude' { 'Claude Code CLI' }
         default { $defaultRuntime }
     }
-    New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'starting' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'starting' -OpenCodeStatus 'pending' -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode 'cli' -RuntimeHealthy $false
+    New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'starting' -BridgePort $bridgePort -OpenCodePort $runtimePort -BridgeStatus 'starting' -OpenCodeStatus 'pending' -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $false
     Write-Host "  Manifest published (status: starting, runtime: $defaultRuntime)" -ForegroundColor Green
 
     # Step 9: Start Bridge
@@ -198,7 +222,7 @@ try {
     $bridgeConfigPath = Join-Path $tiaAgentRoot 'bridge.json'
     $bridgeConfig = [ordered]@{
         port              = $bridgePort
-        openCodeBaseUrl   = "http://127.0.0.1:$opencodePort"
+        openCodeBaseUrl   = if ($runtimeNeedsServer) { "http://127.0.0.1:$runtimePort" } else { '' }
         taskTimeoutSeconds = 300
         maxConcurrentTasks = 5
         maxRequestBodyBytes = 1048576
@@ -215,63 +239,74 @@ try {
     $bridgeHealthUrl = "http://127.0.0.1:$bridgePort/health"
     $bridgeHealthy = Wait-TiaAgentHealth -Url $bridgeHealthUrl -TimeoutSeconds $settings.healthCheckTimeoutSeconds -RetryIntervalMs $settings.healthCheckRetryIntervalMs -ServiceName 'bridge'
     if (-not $bridgeHealthy) {
-        New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'failed' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'failed'
+        New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'failed' -BridgePort $bridgePort -OpenCodePort $runtimePort -BridgeStatus 'failed'
         throw "Bridge health check failed"
     }
 
     # Update manifest with bridge PID
-    New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'starting' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus 'pending' -BridgePid $bridgeResult.Pid
+    New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'starting' -BridgePort $bridgePort -OpenCodePort $runtimePort -BridgeStatus 'healthy' -OpenCodeStatus 'pending' -BridgePid $bridgeResult.Pid
     Write-Host "  Bridge healthy" -ForegroundColor Green
 
-    # Step 11: Generate OpenCode config
-    Write-Host "[11/16] Generating OpenCode config..." -ForegroundColor Yellow
-    $mimoConfig = New-TiaAgentOpenCodeConfig -TiaAgentRoot $tiaAgentRoot -OpenCodePort $opencodePort
-    Write-Host "  Config: $($mimoConfig.ConfigPath)" -ForegroundColor Green
-
-    # Step 12: Start runtime server (only if selected runtime requires server mode)
-    $opencodeProcess = $null
-    $runtimeNeedsServer = $false
-    $runtimeMode = 'cli'
-
-    # Check if the selected runtime needs a server
-    if ($defaultRuntime -eq 'opencode') {
-        $opencodeEntry = $null
-        if ($runtimeConfig -and $runtimeConfig.runtimes -and $runtimeConfig.runtimes.opencode) {
-            $opencodeEntry = $runtimeConfig.runtimes.opencode
+    # Step 11: Generate runtime server config (only for server-mode runtimes)
+    if ($runtimeNeedsServer) {
+        Write-Host "[11/16] Generating runtime server config ($defaultRuntime)..." -ForegroundColor Yellow
+        $runtimeWorkDir = $null
+        if ($defaultRuntime -eq 'opencode') {
+            $mimoConfig = New-TiaAgentOpenCodeConfig -TiaAgentRoot $tiaAgentRoot -OpenCodePort $runtimePort
+            $runtimeWorkDir = $mimoConfig.WorkingDirectory
+            Write-Host "  Config: $($mimoConfig.ConfigPath)" -ForegroundColor Green
+        } else {
+            $runtimeWorkDir = Join-Path (Join-Path $tiaAgentRoot 'runtime') "$defaultRuntime-workdir"
+            if (-not (Test-Path $runtimeWorkDir)) {
+                New-Item -ItemType Directory -Path $runtimeWorkDir -Force | Out-Null
+            }
+            Write-Host "  Work dir: $runtimeWorkDir" -ForegroundColor Green
         }
-        $runtimeMode = if ($opencodeEntry -and $opencodeEntry.mode) { $opencodeEntry.mode } else { 'server' }
-        $runtimeNeedsServer = ($runtimeMode -eq 'server')
+    } else {
+        Write-Host "[11/16] Skipping runtime config (CLI mode: $defaultRuntime)..." -ForegroundColor Gray
     }
 
+    # Step 12: Start runtime server (only if selected runtime requires server mode)
+    $runtimeExeResult = $null
     if ($runtimeNeedsServer) {
         Write-Host "[12/16] Starting runtime server ($defaultRuntime, mode=$runtimeMode)..." -ForegroundColor Yellow
-        $opencodeLog = Join-Path (Join-Path $tiaAgentRoot 'logs') 'opencode.log'
+        $runtimeLog = Join-Path (Join-Path $tiaAgentRoot 'logs') "$defaultRuntime.log"
 
-        # Find mimo executable - resolve to actual node.exe for proper process tracking.
-        $mimoExe = Get-Command mimo -ErrorAction SilentlyContinue
-        if (-not $mimoExe) {
-            throw "Runtime server executable (mimo) not found for '$defaultRuntime' in server mode"
-        }
+        if ($defaultRuntime -eq 'opencode') {
+            # OpenCode uses mimo serve
+            $mimoExe = Get-Command mimo -ErrorAction SilentlyContinue
+            if (-not $mimoExe) {
+                throw "Runtime server executable (mimo) not found for '$defaultRuntime' in server mode"
+            }
 
-        $mimoSource = $mimoExe.Source
-        $mimoDir = Split-Path $mimoSource -Parent
-        $nodeExe = Join-Path $mimoDir 'node.exe'
-        $mimoScript = Join-Path $mimoDir 'node_modules\@mimo-ai\cli\bin\mimo'
+            $mimoSource = $mimoExe.Source
+            $mimoDir = Split-Path $mimoSource -Parent
+            $nodeExe = Join-Path $mimoDir 'node.exe'
+            $mimoScript = Join-Path $mimoDir 'node_modules\@mimo-ai\cli\bin\mimo'
 
-        if ((Test-Path $nodeExe) -and (Test-Path $mimoScript)) {
-            $opencodeResult = Start-TiaAgentService -ServiceName 'opencode' -ExecutablePath $nodeExe -Arguments @($mimoScript, 'serve', '--port', $opencodePort.ToString()) -WorkingDirectory $mimoConfig.WorkingDirectory -LogFile $opencodeLog -InstanceId $instanceId
+            if ((Test-Path $nodeExe) -and (Test-Path $mimoScript)) {
+                $runtimeExeResult = Start-TiaAgentService -ServiceName $defaultRuntime -ExecutablePath $nodeExe -Arguments @($mimoScript, 'serve', '--port', $runtimePort.ToString()) -WorkingDirectory $runtimeWorkDir -LogFile $runtimeLog -InstanceId $instanceId
+            } else {
+                $runtimeExeResult = Start-TiaAgentService -ServiceName $defaultRuntime -ExecutablePath $mimoSource -Arguments @('serve', '--port', $runtimePort.ToString()) -WorkingDirectory $runtimeWorkDir -LogFile $runtimeLog -InstanceId $instanceId
+            }
         } else {
-            $opencodeResult = Start-TiaAgentService -ServiceName 'opencode' -ExecutablePath $mimoSource -Arguments @('serve', '--port', $opencodePort.ToString()) -WorkingDirectory $mimoConfig.WorkingDirectory -LogFile $opencodeLog -InstanceId $instanceId
+            # Generic server-mode runtime
+            $runtimeExe = Get-Command $defaultRuntime -ErrorAction SilentlyContinue
+            if (-not $runtimeExe) {
+                throw "Runtime executable '$defaultRuntime' not found for server mode"
+            }
+            $runtimeExeResult = Start-TiaAgentService -ServiceName $defaultRuntime -ExecutablePath $runtimeExe.Source -Arguments @('serve', '--port', $runtimePort.ToString()) -WorkingDirectory $runtimeWorkDir -LogFile $runtimeLog -InstanceId $instanceId
         }
-        $opencodeProcess = $opencodeResult.Process
-        Write-Host "  Runtime server started (PID: $($opencodeResult.Pid))" -ForegroundColor Green
+
+        $runtimeProcess = $runtimeExeResult.Process
+        Write-Host "  Runtime server started (PID: $($runtimeExeResult.Pid))" -ForegroundColor Green
 
         # Step 13: Wait for runtime server health
         Write-Host "[13/16] Waiting for runtime server health..." -ForegroundColor Yellow
-        $opencodeHealthUrl = "http://127.0.0.1:$opencodePort/health"
-        $opencodeHealthy = Wait-TiaAgentHealth -Url $opencodeHealthUrl -TimeoutSeconds $settings.healthCheckTimeoutSeconds -RetryIntervalMs $settings.healthCheckRetryIntervalMs -ServiceName 'opencode'
-        if (-not $opencodeHealthy) {
-            New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'failed' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus 'failed' -BridgePid $bridgeResult.Pid -OpenCodePid $opencodeResult.Pid -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $false
+        $runtimeHealthUrl = "http://127.0.0.1:$runtimePort/health"
+        $runtimeHealthy = Wait-TiaAgentHealth -Url $runtimeHealthUrl -TimeoutSeconds $settings.healthCheckTimeoutSeconds -RetryIntervalMs $settings.healthCheckRetryIntervalMs -ServiceName $defaultRuntime
+        if (-not $runtimeHealthy) {
+            New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'failed' -BridgePort $bridgePort -OpenCodePort $runtimePort -BridgeStatus 'healthy' -OpenCodeStatus 'failed' -BridgePid $bridgeResult.Pid -OpenCodePid $runtimeExeResult.Pid -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $false
             throw "Runtime server health check failed for '$defaultRuntime'"
         }
         Write-Host "  Runtime server healthy" -ForegroundColor Green
@@ -279,20 +314,19 @@ try {
         Write-Host "[12/16] Skipping runtime server (CLI mode: $defaultRuntime)..." -ForegroundColor Gray
         Write-Host "[13/16] Skipping server health check (CLI mode)..." -ForegroundColor Gray
         # In CLI mode, verify the runtime executable is available
-        $runtimeExe = $defaultRuntime
-        $runtimeExeCheck = Get-Command $runtimeExe -ErrorAction SilentlyContinue
+        $runtimeExeCheck = Get-Command $defaultRuntime -ErrorAction SilentlyContinue
         if (-not $runtimeExeCheck) {
-            New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'failed' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus 'skipped' -BridgePid $bridgeResult.Pid -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $false
-            throw "Runtime executable '$runtimeExe' not found for '$defaultRuntime' in CLI mode"
+            New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'failed' -BridgePort $bridgePort -OpenCodePort 0 -BridgeStatus 'healthy' -OpenCodeStatus 'skipped' -BridgePid $bridgeResult.Pid -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $false
+            throw "Runtime executable '$defaultRuntime' not found for CLI mode"
         }
         Write-Host "  Runtime executable found: $($runtimeExeCheck.Source)" -ForegroundColor Green
     }
 
     # Step 14: Publish runtime status as ready
     Write-Host "[14/16] Publishing ready status..." -ForegroundColor Yellow
-    $opencodeStatusFinal = if ($runtimeNeedsServer) { 'healthy' } else { 'skipped' }
-    $opencodePidFinal = if ($opencodeProcess) { $opencodeResult.Pid } else { 0 }
-    New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'ready' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus $opencodeStatusFinal -BridgePid $bridgeResult.Pid -OpenCodePid $opencodePidFinal -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $true
+    $runtimeStatusFinal = if ($runtimeNeedsServer) { 'healthy' } else { 'skipped' }
+    $runtimePidFinal = if ($runtimeExeResult) { $runtimeExeResult.Pid } else { 0 }
+    New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'ready' -BridgePort $bridgePort -OpenCodePort $runtimePort -BridgeStatus 'healthy' -OpenCodeStatus $runtimeStatusFinal -BridgePid $bridgeResult.Pid -OpenCodePid $runtimePidFinal -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $true
     Write-Host "  Runtime status: ready" -ForegroundColor Green
 
     # Step 15: Display summary
@@ -307,7 +341,7 @@ try {
     Write-Host "Bridge     : Healthy, http://127.0.0.1:$bridgePort" -ForegroundColor White
     Write-Host "Runtime    : $defaultRuntime ($runtimeDisplayName, mode=$runtimeMode)" -ForegroundColor White
     if ($runtimeNeedsServer) {
-        Write-Host "Server     : Healthy, http://127.0.0.1:$opencodePort" -ForegroundColor White
+        Write-Host "Server     : Healthy, http://127.0.0.1:$runtimePort" -ForegroundColor White
     } else {
         Write-Host "Server     : Not needed (CLI mode)" -ForegroundColor Gray
     }
@@ -348,14 +382,14 @@ try {
             # Check process health
             if ($bridgeProcess -and $bridgeProcess.HasExited) {
                 Write-TiaAgentLog -Level 'ERROR' -InstanceId $instanceId -Event 'bridge_exited' -Message "Bridge exited unexpectedly with code $($bridgeProcess.ExitCode)"
-                New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'degraded' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'failed' -OpenCodeStatus $(if ($runtimeNeedsServer) { 'healthy' } else { 'skipped' }) -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $true
+                New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'degraded' -BridgePort $bridgePort -OpenCodePort $runtimePort -BridgeStatus 'failed' -OpenCodeStatus $(if ($runtimeNeedsServer) { 'healthy' } else { 'skipped' }) -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $true
                 Write-Host "  WARNING: Bridge exited (code: $($bridgeProcess.ExitCode))" -ForegroundColor Red
             }
 
-            if ($opencodeProcess -and $opencodeProcess.HasExited) {
-                Write-TiaAgentLog -Level 'ERROR' -InstanceId $instanceId -Event 'opencode_exited' -Message "Runtime server exited unexpectedly with code $($opencodeProcess.ExitCode)"
-                New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'degraded' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus 'failed' -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $false
-                Write-Host "  WARNING: Runtime server exited (code: $($opencodeProcess.ExitCode))" -ForegroundColor Red
+            if ($runtimeProcess -and $runtimeProcess.HasExited) {
+                Write-TiaAgentLog -Level 'ERROR' -InstanceId $instanceId -Event 'runtime_exited' -Message "Runtime server exited unexpectedly with code $($runtimeProcess.ExitCode)"
+                New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'degraded' -BridgePort $bridgePort -OpenCodePort $runtimePort -BridgeStatus 'healthy' -OpenCodeStatus 'failed' -RuntimeId $defaultRuntime -RuntimeDisplayName $runtimeDisplayName -RuntimeMode $runtimeMode -RuntimeHealthy $false
+                Write-Host "  WARNING: Runtime server exited (code: $($runtimeProcess.ExitCode))" -ForegroundColor Red
             }
 
             Start-Sleep -Milliseconds 1000
@@ -376,5 +410,5 @@ catch {
 }
 finally {
     # Run cleanup
-    & $cleanup -InstanceId $instanceId -TiaAgentRoot $tiaAgentRoot -Mutex $lock.Mutex -LockFile $lock.LockFilePath -BridgeProcess $bridgeProcess -OpenCodeProcess $opencodeProcess
+    & $cleanup -InstanceId $instanceId -TiaAgentRoot $tiaAgentRoot -Mutex $lock.Mutex -LockFile $lock.LockFilePath -BridgeProcess $bridgeProcess -RuntimeProcess $runtimeProcess
 }

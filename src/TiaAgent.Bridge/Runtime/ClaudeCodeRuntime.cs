@@ -46,11 +46,12 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
 
     public async Task<RuntimeAvailabilityResult> CheckAvailabilityAsync(CancellationToken cancellationToken)
     {
-        var exe = _executable ?? "claude";
+        var exeName = _executable ?? "claude";
+        var (fileName, psPrefix) = ResolveProcess(exeName);
         try
         {
             var result = await _processRunner.RunAsync(
-                exe, "--version", null,
+                fileName, $"{psPrefix}--version".TrimStart(), null,
                 TimeSpan.FromSeconds(10),
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -68,7 +69,7 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
                 return new RuntimeAvailabilityResult
                 {
                     Available = true,
-                    Executable = exe,
+                    Executable = exeName,
                     Version = version,
                     Mode = "cli"
                 };
@@ -79,7 +80,7 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
             return new RuntimeAvailabilityResult
             {
                 Available = false,
-                Executable = exe,
+                Executable = exeName,
                 Mode = "cli",
                 Error = error
             };
@@ -90,9 +91,9 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
             return new RuntimeAvailabilityResult
             {
                 Available = false,
-                Executable = exe,
+                Executable = exeName,
                 Mode = "cli",
-                Error = $"Executable not found: {exe}. {ex.Message}"
+                Error = $"Executable not found: {exeName}. {ex.Message}"
             };
         }
     }
@@ -102,10 +103,20 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
         IProgress<AgentTaskEvent>? progress,
         CancellationToken cancellationToken)
     {
-        var exe = _executable ?? "claude";
-        var args = BuildArguments(request);
+        var exeName = _executable ?? "claude";
+        var (fileName, psPrefix) = ResolveProcess(exeName);
 
-        _logger.Info($"ClaudeCodeRuntime: executing task {request.TaskId} (action={request.Action}, agent={request.AgentId})");
+        // Ensure MCP config exists before building arguments (--mcp-config needs the file)
+        if (!string.IsNullOrEmpty(_mcpServerCommand))
+        {
+            EnsureMcpConfigGenerated();
+        }
+
+        var claudeArgs = BuildArguments(request);
+        _logger.Info($"ClaudeCodeRuntime: mcpConfig={_generatedMcpConfigPath ?? "none"}, psWrap={psPrefix.Length > 0}");
+        var args = $"{psPrefix}{claudeArgs}".TrimStart();
+
+        _logger.Info($"ClaudeCodeRuntime: executing task {request.TaskId} (action={request.Action}, agent={request.AgentId}, mcpConfig={_generatedMcpConfigPath ?? "none"})");
 
         var lineProgress = new Progress<string>(line =>
         {
@@ -113,7 +124,7 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
         });
 
         var result = await _processRunner.RunAsync(
-            exe, args, null,
+            fileName, args, null,
             TimeSpan.FromMinutes(5),
             progress: lineProgress,
             cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -172,6 +183,57 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
     {
         _logger.Info($"ClaudeCodeRuntime: cancel requested for task {taskId}");
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Resolves the executable for process start. If the executable is a .ps1 script
+    /// (or a bare name whose .ps1 variant exists on PATH), returns powershell.exe as
+    /// the FileName and a prefix that invokes the original script via -File.
+    /// </summary>
+    private static (string FileName, string ArgPrefix) ResolveProcess(string executable)
+    {
+        string? scriptPath = null;
+
+        if (executable.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
+        {
+            scriptPath = executable;
+        }
+        else if (!executable.Contains('.') &&
+                 !executable.Contains(Path.DirectorySeparatorChar) &&
+                 !executable.Contains(Path.AltDirectorySeparatorChar))
+        {
+            // Bare name like "claude" — check if claude.ps1 exists on PATH
+            var ps1 = FindOnPath(executable + ".ps1");
+            if (ps1 != null)
+            {
+                scriptPath = ps1;
+            }
+        }
+
+        if (scriptPath != null)
+        {
+            // Wrap: powershell.exe -NoProfile -ExecutionPolicy Bypass -File "script.ps1" <args>
+            var prefix = $"-NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" ";
+            return ("powershell.exe", prefix);
+        }
+
+        return (executable, "");
+    }
+
+    /// <summary>
+    /// Returns the full path if the file is found on PATH, null otherwise.
+    /// </summary>
+    private static string? FindOnPath(string fileName)
+    {
+        var pathVar = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrEmpty(pathVar)) return null;
+
+        foreach (var dir in pathVar.Split(Path.PathSeparator))
+        {
+            var full = Path.Combine(dir.Trim(), fileName);
+            if (File.Exists(full)) return full;
+        }
+        return null;
     }
 
     /// <summary>

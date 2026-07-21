@@ -98,16 +98,23 @@ if ($manifest.services.opencode -and $manifest.services.opencode.pid -gt 0) {
 }
 
 if (-not $opencodeStopped) {
-    # Try to find and stop any OpenCode processes
-    $opencodeProcesses = Get-Process -Name 'mimo', 'node' -ErrorAction SilentlyContinue | Where-Object {
+    # Try to find and stop any runtime processes by port
+    $runtimeId = if ($manifest.runtime -and $manifest.runtime.id) { $manifest.runtime.id } else { 'opencode' }
+    $runtimeProcessNames = switch ($runtimeId) {
+        'opencode' { @('mimo', 'node') }
+        'claude'   { @('claude') }
+        'mimo'     { @('mimo', 'node') }
+        default    { @($runtimeId) }
+    }
+    $runtimeProcesses = Get-Process -Name $runtimeProcessNames -ErrorAction SilentlyContinue | Where-Object {
         $_.CommandLine -like "*serve*--port*$($manifest.services.opencode.port)*"
     }
-    foreach ($proc in $opencodeProcesses) {
+    foreach ($proc in $runtimeProcesses) {
         if ($Force) {
             $proc.Kill()
         }
         else {
-            Stop-TiaAgentService -Process $proc -ServiceName 'opencode' -GracefulTimeoutSeconds 10 -RuntimeInstanceId $instanceId
+            Stop-TiaAgentService -Process $proc -ServiceName $runtimeId -GracefulTimeoutSeconds 10 -RuntimeInstanceId $instanceId
         }
     }
 }
