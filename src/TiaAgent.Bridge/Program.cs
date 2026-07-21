@@ -147,42 +147,43 @@ public static class Program
         var claudeConfig = GetRuntimeEntry(runtimeConfig, "claude");
         if (claudeConfig?.Enabled != false)
         {
-            // Try to find tia-mcp command for MCP config generation.
-            // Check known locations: PATH, .NET global tools directory.
+            // Find tia-mcp for MCP config generation.
+            // Prefer the .NET global tools copy (stable path) over bare name.
+            // Do NOT spawn tia-mcp to test --version: it is a stdio MCP server
+            // that blocks reading stdin, causing Process.Start + WaitForExit to
+            // hang until the timeout expires. File-existence check is sufficient.
             string? mcpCommand = null;
-            var mcpSearchPaths = new[] { "tia-mcp" };
             var dotnetToolsDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".dotnet", "tools");
+
             if (Directory.Exists(dotnetToolsDir))
             {
                 var mcpExePath = Path.Combine(dotnetToolsDir, "tia-mcp.exe");
                 if (File.Exists(mcpExePath))
-                    mcpSearchPaths = new[] { "tia-mcp", mcpExePath };
+                {
+                    mcpCommand = mcpExePath;
+                }
             }
 
-            foreach (var candidate in mcpSearchPaths)
+            if (mcpCommand == null)
             {
-                try
+                // Fallback: check if tia-mcp is on PATH (bare name)
+                var pathVar = Environment.GetEnvironmentVariable("PATH");
+                if (!string.IsNullOrEmpty(pathVar))
                 {
-                    var mcpCheck = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    foreach (var dir in pathVar.Split(Path.PathSeparator))
                     {
-                        FileName = candidate,
-                        Arguments = "--version",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    });
-                    mcpCheck?.WaitForExit(3000);
-                    if (mcpCheck?.ExitCode == 0)
-                    {
-                        mcpCommand = candidate;
-                        break;
+                        var candidate = Path.Combine(dir.Trim(), "tia-mcp.exe");
+                        if (File.Exists(candidate))
+                        {
+                            mcpCommand = candidate;
+                            break;
+                        }
                     }
                 }
-                catch { }
             }
+
             logger.Info($"RegisterRuntimes: tia-mcp {(mcpCommand != null ? $"found at '{mcpCommand}'" : "not found")}");
 
             var claudeRuntime = new ClaudeCodeRuntime(

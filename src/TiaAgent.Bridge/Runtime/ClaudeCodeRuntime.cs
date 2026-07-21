@@ -113,7 +113,8 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
         }
 
         var claudeArgs = BuildArguments(request);
-        _logger.Info($"ClaudeCodeRuntime: mcpConfig={_generatedMcpConfigPath ?? "none"}, psWrap={psPrefix.Length > 0}");
+        var hasMcp = !string.IsNullOrEmpty(_generatedMcpConfigPath);
+        _logger.Info($"ClaudeCodeRuntime: mcpConfig={_generatedMcpConfigPath ?? "none"}, mcpTransport={(hasMcp ? "stdio" : "none")}, mcpCommand={_mcpServerCommand ?? "none"}, psWrap={psPrefix.Length > 0}");
         var args = $"{psPrefix}{claudeArgs}".TrimStart();
 
         _logger.Info($"ClaudeCodeRuntime: executing task {request.TaskId} (action={request.Action}, agent={request.AgentId}, mcpConfig={_generatedMcpConfigPath ?? "none"})");
@@ -348,6 +349,7 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
             var json = JsonSerializer.Serialize(config, s_jsonOptions);
             File.WriteAllText(_generatedMcpConfigPath, json);
             _logger.Info($"ClaudeCodeRuntime: generated MCP config at {_generatedMcpConfigPath}");
+            _logger.Info($"ClaudeCodeRuntime: MCP server command={_mcpServerCommand}, transport=stdio, auth=none (stdio transport)");
         }
         catch (Exception ex)
         {
