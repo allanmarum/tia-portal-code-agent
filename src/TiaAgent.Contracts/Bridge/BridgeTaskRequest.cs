@@ -10,4 +10,10 @@ public sealed class BridgeTaskRequest
     public ProjectSnapshot Project { get; init; } = null!;
     public SelectionSnapshot Selection { get; init; } = null!;
     public string UserMessage { get; init; } = null!;
+
+    /// <summary>
+    /// Optional runtime override (e.g. "mimo", "opencode", "claude").
+    /// If omitted, the Bridge uses the configured default runtime.
+    /// </summary>
+    public string? Runtime { get; init; }
 }

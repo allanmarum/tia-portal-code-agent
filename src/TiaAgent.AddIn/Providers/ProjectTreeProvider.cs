@@ -165,8 +165,13 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
 
                 if (status.Status == BridgeTaskStatusValues.Completed)
                 {
-                    AddInLogger.Info($"Task completed for '{action}' on {selection.Name}");
-                    AssistantPanelFactory.ShowResult(action, status.Response ?? "No response received.");
+                    AddInLogger.Info($"Task completed for '{action}' on {selection.Name} (runtime={status.RuntimeId ?? "unknown"})");
+                    var response = status.Response ?? "No response received.";
+                    if (!string.IsNullOrEmpty(status.RuntimeId))
+                    {
+                        response = $"[Runtime: {status.RuntimeId}]\n\n{response}";
+                    }
+                    AssistantPanelFactory.ShowResult(action, response);
                     return;
                 }
 

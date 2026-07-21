@@ -41,7 +41,12 @@ function New-TiaAgentRuntimeManifest {
         [string]$OpenCodeStatus = 'pending',
 
         [int]$BridgePid = 0,
-        [int]$OpenCodePid = 0
+        [int]$OpenCodePid = 0,
+
+        [string]$RuntimeId = '',
+        [string]$RuntimeDisplayName = '',
+        [string]$RuntimeMode = '',
+        [bool]$RuntimeHealthy = $false
     )
 
     $now = (Get-Date).ToString('o')
@@ -97,6 +102,16 @@ function New-TiaAgentRuntimeManifest {
                 baseUrl   = if ($OpenCodePort -gt 0) { "http://${openCodeHost}:${OpenCodePort}" } else { '' }
                 healthUrl = $openCodeHealthUrl
             }
+        }
+    }
+
+    # Add runtime info if provided
+    if ($RuntimeId) {
+        $manifest['runtime'] = [ordered]@{
+            id          = $RuntimeId
+            displayName = $RuntimeDisplayName
+            mode        = $RuntimeMode
+            healthy     = $RuntimeHealthy
         }
     }
 

@@ -8,11 +8,11 @@ using FluentAssertions;
 using TiaAgent.Bridge.Api;
 using TiaAgent.Bridge.Configuration;
 using TiaAgent.Bridge.Diagnostics;
-using TiaAgent.Bridge.OpenCode;
+using TiaAgent.Bridge.Runtime;
 using TiaAgent.Bridge.Security;
-using TiaAgent.Bridge.Sessions;
 using TiaAgent.Bridge.Tasks;
 using TiaAgent.Contracts.Bridge;
+using TiaAgent.Contracts.Runtime;
 using Xunit;
 
 namespace TiaAgent.Bridge.Tests;
@@ -153,11 +153,12 @@ public class BridgeAuthTests : IDisposable
     {
         var config = new BridgeConfig { Port = _port };
         var logger = new BridgeLogger();
-        var openCodeClient = new OpenCodeClient("http://127.0.0.1:43120", TimeSpan.FromSeconds(30));
-        var sessionManager = new SessionManager(openCodeClient);
-        var taskManager = new TaskManager(openCodeClient, 4, logger);
+        var runtimeConfig = new TiaAgentConfig { DefaultRuntime = "test" };
+        var runtimeRegistry = new RuntimeRegistry(runtimeConfig, logger);
+        runtimeRegistry.Register(new FakeRuntime("test", "Test Runtime"));
+        var taskManager = new TaskManager(runtimeRegistry, 4, logger);
 
-        _controller = new BridgeController(config, logger, _tokenProvider, openCodeClient, sessionManager, taskManager);
+        _controller = new BridgeController(config, logger, _tokenProvider, runtimeRegistry, taskManager);
         _controller.Start();
 
         _httpClient = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{_port}") };

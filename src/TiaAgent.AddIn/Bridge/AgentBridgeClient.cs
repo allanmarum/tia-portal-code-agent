@@ -240,9 +240,15 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
         {
             Status = ExtractJsonString(json, "status") ?? "unknown",
             BridgeVersion = ExtractJsonString(json, "bridgeVersion") ?? "unknown",
-            OpenCodeAvailable = ExtractJsonBool(json, "openCodeAvailable"),
-            OpenCodeVersion = ExtractJsonString(json, "openCodeVersion") ?? "",
-            McpConfigured = ExtractJsonBool(json, "mcpConfigured")
+            McpConfigured = ExtractJsonBool(json, "mcpConfigured"),
+            // New runtime fields (backward compatible)
+            RuntimeId = ExtractJsonString(json, "runtimeId"),
+            RuntimeDisplayName = ExtractJsonString(json, "runtimeDisplayName"),
+            RuntimeAvailable = ExtractJsonBool(json, "runtimeAvailable"),
+            RuntimeVersion = ExtractJsonString(json, "runtimeVersion"),
+            // Legacy fields (map to runtime fields for backward compat)
+            OpenCodeAvailable = ExtractJsonBool(json, "openCodeAvailable") || ExtractJsonBool(json, "runtimeAvailable"),
+            OpenCodeVersion = ExtractJsonString(json, "openCodeVersion") ?? ExtractJsonString(json, "runtimeVersion") ?? ""
         };
     }
 
@@ -276,6 +282,8 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
             Status = ExtractJsonString(json, "status") ?? "",
             Stage = ExtractJsonString(json, "stage") ?? "",
             Message = ExtractJsonString(json, "message") ?? "",
+            RuntimeId = ExtractJsonString(json, "runtimeId"),
+            RuntimeVersion = ExtractJsonString(json, "runtimeVersion"),
             Response = ExtractJsonString(json, "response") ?? "",
             Error = error
         };
