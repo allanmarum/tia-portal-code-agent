@@ -56,6 +56,16 @@ public class DependencyTests
     }
 
     [Fact]
+    public void AddIn_ShouldNotReferenceBridge()
+    {
+        var assembly = typeof(TiaAgent.AddIn.Diagnostics.AddInLogger).Assembly;
+        var references = assembly.GetReferencedAssemblies();
+        references.Should().NotContain(r =>
+            r.Name == "TiaAgent.Bridge",
+            "TiaAgent.AddIn must not reference TiaAgent.Bridge (must communicate via IAgentBridgeClient HTTP only)");
+    }
+
+    [Fact]
     public void AddIn_ShouldNotReferenceMicrosoftExtensionsLogging()
     {
         var assembly = typeof(TiaAgent.AddIn.Diagnostics.AddInLogger).Assembly;

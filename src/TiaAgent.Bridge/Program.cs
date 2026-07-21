@@ -1,13 +1,14 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using TiaAgent.Bridge.Api;
 using TiaAgent.Bridge.Configuration;
 using TiaAgent.Bridge.Diagnostics;
-using TiaAgent.Bridge.OpenCode;
+using TiaAgent.Bridge.Runtime;
 using TiaAgent.Bridge.Security;
-using TiaAgent.Bridge.Sessions;
 using TiaAgent.Bridge.Tasks;
+using TiaAgent.Contracts.Runtime;
 
 namespace TiaAgent.Bridge;
 
@@ -29,18 +30,40 @@ public static class Program
 
         logger.Startup("=== TIA Agent Bridge starting ===");
         logger.Startup($"Port: {config.Port}");
-        logger.Startup($"OpenCode URL: {config.OpenCodeBaseUrl}");
-        logger.Startup($"Max concurrent tasks: {config.MaxConcurrentTasks}");
-        logger.Startup($"Task timeout: {config.TaskTimeoutSeconds}s");
         logger.Startup($"Auth token fingerprint: {TokenFingerprint(tokenProvider.Token)}");
 
-        var openCodeClient = new OpenCodeClient(
-            config.OpenCodeBaseUrl,
-            TimeSpan.FromSeconds(config.TaskTimeoutSeconds));
-        var sessionManager = new SessionManager(openCodeClient);
-        var taskManager = new TaskManager(openCodeClient, config.MaxConcurrentTasks, logger);
+        // Load runtime configuration
+        var configLoader = new RuntimeConfigLoader(logger);
+        var runtimeConfig = configLoader.Load();
 
-        var controller = new BridgeController(config, logger, tokenProvider, openCodeClient, sessionManager, taskManager);
+        // Create and populate the runtime registry
+        var runtimeRegistry = new RuntimeRegistry(runtimeConfig, logger);
+
+        // Register all known runtime adapters
+        RegisterRuntimes(runtimeRegistry, runtimeConfig, config, logger);
+
+        // Log registered runtimes
+        var allRuntimes = runtimeRegistry.GetAllRuntimes();
+        logger.Startup($"Registered runtimes: {string.Join(", ", allRuntimes.Select(r => $"{r.Id} ({r.DisplayName})"))}");
+        logger.Startup($"Default runtime: {runtimeRegistry.GetDefaultRuntimeId()}");
+
+        // Check availability of all runtimes
+        logger.Startup("Checking runtime availability...");
+        var availability = await runtimeRegistry.CheckAllAvailabilityAsync(CancellationToken.None).ConfigureAwait(false);
+        foreach (var kvp in availability)
+        {
+            var status = kvp.Value.Available ? "available" : "unavailable";
+            var detail = kvp.Value.Available
+                ? $"version={kvp.Value.Version}, mode={kvp.Value.Mode}"
+                : $"error={kvp.Value.Error}";
+            logger.Startup($"  {kvp.Key}: {status} ({detail})");
+        }
+
+        // Create task manager with runtime registry
+        var taskManager = new TaskManager(runtimeRegistry, config.MaxConcurrentTasks, logger);
+
+        // Create and start the controller
+        var controller = new BridgeController(config, logger, tokenProvider, runtimeRegistry, taskManager);
 
         var shutdownCts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
@@ -54,6 +77,16 @@ public static class Program
         {
             controller.Start();
             logger.Startup($"Bridge listening on http://127.0.0.1:{config.Port}/");
+            logger.Startup("Endpoints:");
+            logger.Startup("  GET  /health");
+            logger.Startup("  POST /v1/tasks");
+            logger.Startup("  GET  /v1/tasks/{taskId}");
+            logger.Startup("  POST /v1/tasks/{taskId}/cancel");
+            logger.Startup("  GET  /api/runtimes");
+            logger.Startup("  GET  /api/runtimes/{id}/health");
+            logger.Startup("  GET  /api/settings/runtime");
+            logger.Startup("  PUT  /api/settings/runtime");
+            logger.Startup("  GET  /diagnostics");
             logger.Startup("Press Ctrl+C to stop");
 
             await Task.Delay(Timeout.Infinite, shutdownCts.Token).ConfigureAwait(false);
@@ -68,9 +101,81 @@ public static class Program
             controller.Stop();
             controller.Dispose();
             taskManager.Dispose();
-            sessionManager.Dispose();
-            openCodeClient.Dispose();
+            runtimeRegistry.Dispose();
             logger.Info("Bridge stopped");
         }
+    }
+
+    /// <summary>
+    /// Registers all known runtime adapters based on configuration.
+    /// Only registers enabled runtimes.
+    /// </summary>
+    private static void RegisterRuntimes(
+        RuntimeRegistry registry,
+        TiaAgentConfig runtimeConfig,
+        BridgeConfig bridgeConfig,
+        BridgeLogger logger)
+    {
+        // Mimo CLI — always register (check availability later)
+        var mimoConfig = GetRuntimeEntry(runtimeConfig, "mimo");
+        if (mimoConfig?.Enabled != false)
+        {
+            var mimoRuntime = new MimoCliRuntime(
+                logger,
+                executable: mimoConfig?.Executable,
+                model: null);
+            registry.Register(mimoRuntime);
+        }
+
+        // OpenCode — supports server and CLI modes
+        var opencodeConfig = GetRuntimeEntry(runtimeConfig, "opencode");
+        if (opencodeConfig?.Enabled != false)
+        {
+            var mode = opencodeConfig?.Mode ?? "server";
+            var serverUrl = opencodeConfig?.ServerUrl ?? $"http://127.0.0.1:{bridgeConfig.Port + 1}";
+
+            var opencodeRuntime = new OpenCodeRuntime(
+                logger,
+                mode: mode,
+                serverUrl: serverUrl,
+                executable: opencodeConfig?.Executable,
+                model: null);
+            registry.Register(opencodeRuntime);
+        }
+
+        // Claude Code CLI
+        var claudeConfig = GetRuntimeEntry(runtimeConfig, "claude");
+        if (claudeConfig?.Enabled != false)
+        {
+            // Try to find tia-mcp command for MCP config generation
+            string? mcpCommand = null;
+            try
+            {
+                var mcpCheck = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "tia-mcp",
+                    Arguments = "--version",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                });
+                mcpCheck?.WaitForExit(3000);
+                if (mcpCheck?.ExitCode == 0)
+                    mcpCommand = "tia-mcp";
+            }
+            catch { }
+
+            var claudeRuntime = new ClaudeCodeRuntime(
+                logger,
+                executable: claudeConfig?.Executable,
+                model: null,
+                mcpServerCommand: mcpCommand);
+            registry.Register(claudeRuntime);
+        }
+    }
+
+    private static RuntimeEntryConfig? GetRuntimeEntry(TiaAgentConfig config, string id)
+    {
+        return config.Runtimes.TryGetValue(id, out var entry) ? entry : null;
     }
 }

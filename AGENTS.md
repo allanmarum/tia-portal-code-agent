@@ -17,22 +17,43 @@ TIA Portal Code Agent — a Siemens TIA Portal V21 Add-In that integrates an AI 
 ## Architecture at a glance
 
 ```text
-Add-In (UI + context capture, net48)
+TIA Portal Add-In (UI + context capture, net48)
   → Runtime Discovery (reads runtime.json)
     → Bridge (HTTP, port 43119)
-      → OpenCode/MiMoCode (AI agent runtime, port 43120)
-        → Czarnak's tia-mcp (stdio MCP server, .NET 8)
-          → OpennessWorker (.NET 4.8)
-            → TIA Portal Openness SDK
+      → IAgentRuntime (runtime abstraction)
+        +--- MimoCliRuntime (mimo run --format json)
+        +--- OpenCodeRuntime (server or CLI mode)
+        +--- ClaudeCodeRuntime (claude -p --output-format json)
+          → Czarnak's tia-mcp (stdio MCP server, .NET 8)
+            → OpennessWorker (.NET 4.8)
+              → TIA Portal Openness SDK
 ```
 
-This repo contains: **Add-In**, **Application** (orchestrator), **OpenCode** (HTTP client), **Contracts** (DTOs, errors, interfaces), **Runtime Supervisor** (PowerShell scripts for service lifecycle).
+This repo contains: **Add-In**, **Application** (orchestrator), **OpenCode** (HTTP client), **Contracts** (DTOs, errors, interfaces, runtime abstraction), **Bridge** (HTTP bridge with runtime adapters), **Runtime Supervisor** (PowerShell scripts for service lifecycle).
 
 MCP and Openness are delegated to Czarnak's `TiaMcpServer` — do not duplicate TIA access.
 
+## Supported runtimes
+
+The Bridge supports multiple interchangeable coding agent runtimes:
+
+| Runtime | ID | Mode | Prerequisites |
+|---|---|---|---|
+| Mimo CLI | `mimo` | CLI | `mimo` on PATH |
+| OpenCode | `opencode` | Server or CLI | `opencode` on PATH |
+| Claude Code CLI | `claude` | CLI | `claude` on PATH |
+
+Runtime selection precedence:
+1. Runtime explicitly included in the task request
+2. `TIA_AGENT_RUNTIME` environment variable
+3. User configuration file (`%LOCALAPPDATA%\TiaAgent\config.json`)
+4. Configured default (`opencode`)
+
+See `docs/RUNTIME.md` for full runtime configuration details.
+
 ## Runtime Supervisor
 
-The Runtime Supervisor orchestrates service startup, monitoring, and shutdown:
+The Runtime Supervisor orchestrates service startup, monitoring, and shutdown. It is runtime-aware: it reads `%LOCALAPPDATA%\TiaAgent\config.json` to determine which runtime to start, and only launches a server process when the selected runtime is in server mode.
 
 ```powershell
 # Start all services
@@ -45,7 +66,7 @@ The Runtime Supervisor orchestrates service startup, monitoring, and shutdown:
 .\src\runtime\Scripts\stop.ps1
 ```
 
-See `docs/RUN.md` for detailed usage and `docs/spec/ARCHITECTURE.md` section 30 for the architectural specification.
+See `docs/RUN.md` for detailed usage, `docs/RUNTIME.md` for runtime configuration, and `docs/spec/ARCHITECTURE.md` for the architectural specification.
 
 See `docs/spec/ARCHITECTURE.md` for the full architecture contract.
 

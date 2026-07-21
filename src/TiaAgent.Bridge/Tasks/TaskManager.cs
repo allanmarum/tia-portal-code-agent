@@ -1,25 +1,27 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using TiaAgent.Bridge.Diagnostics;
-using TiaAgent.Bridge.OpenCode;
+using TiaAgent.Bridge.Runtime;
 using TiaAgent.Contracts.Bridge;
+using TiaAgent.Contracts.Runtime;
 
 namespace TiaAgent.Bridge.Tasks;
 
 public sealed class TaskManager : IDisposable
 {
     private readonly ConcurrentDictionary<string, TaskEntry> _tasks = new();
-    private readonly OpenCodeClient _openCodeClient;
+    private readonly RuntimeRegistry _runtimeRegistry;
     private readonly int _maxConcurrentTasks;
     private readonly BridgeLogger _logger;
     private int _runningCount;
     private readonly object _concurrencyLock = new();
 
-    public TaskManager(OpenCodeClient openCodeClient, int maxConcurrentTasks, BridgeLogger logger)
+    public TaskManager(RuntimeRegistry runtimeRegistry, int maxConcurrentTasks, BridgeLogger logger)
     {
-        _openCodeClient = openCodeClient;
+        _runtimeRegistry = runtimeRegistry;
         _maxConcurrentTasks = maxConcurrentTasks;
         _logger = logger;
     }
@@ -58,7 +60,9 @@ public sealed class TaskManager : IDisposable
             Stage = entry.Stage,
             Message = entry.Message,
             Response = entry.Response,
-            Error = entry.Error
+            Error = entry.Error,
+            RuntimeId = entry.RuntimeId,
+            RuntimeVersion = entry.RuntimeVersion
         };
     }
 
@@ -75,6 +79,18 @@ public sealed class TaskManager : IDisposable
         entry.Status = BridgeTaskStatusValues.Cancelled;
         entry.Message = "Task cancelled by user";
         entry.CancellationTokenSource?.Cancel();
+
+        // Also tell the runtime to cancel
+        if (!string.IsNullOrEmpty(entry.RuntimeId))
+        {
+            try
+            {
+                var runtime = _runtimeRegistry.GetRuntime(entry.RuntimeId);
+                _ = runtime.CancelAsync(taskId, CancellationToken.None);
+            }
+            catch { }
+        }
+
         return true;
     }
 
@@ -85,7 +101,7 @@ public sealed class TaskManager : IDisposable
 
         try
         {
-            _logger.Info($"Task {entry.TaskId}: starting execution (action={entry.Request.Action}, agent={entry.Request.AgentId})");
+            _logger.Info($"Task {entry.TaskId}: starting execution (action={entry.Request.Action}, agent={entry.Request.AgentId}, runtime={entry.Request.Runtime ?? "default"})");
 
             lock (_concurrencyLock)
             {
@@ -105,75 +121,109 @@ public sealed class TaskManager : IDisposable
             }
 
             entry.Status = BridgeTaskStatusValues.Running;
-            entry.Stage = "connecting";
-            entry.Message = "Connecting to OpenCode...";
+            entry.Stage = "resolving_runtime";
+            entry.Message = "Resolving runtime...";
 
-            if (entry.Request.Project == null)
+            // Resolve which runtime to use
+            IAgentRuntime runtime;
+            try
             {
-                _logger.Warn($"Task {entry.TaskId}: Request.Project is null");
+                runtime = _runtimeRegistry.ResolveRuntime(entry.Request.Runtime);
             }
-            if (entry.Request.Selection == null)
+            catch (InvalidOperationException ex)
             {
-                _logger.Warn($"Task {entry.TaskId}: Request.Selection is null");
-            }
-
-            var prompt = BuildPrompt(entry.Request);
-
-            _logger.Info($"Task {entry.TaskId}: calling OpenCode CreateSessionAsync");
-            var sessionId = await _openCodeClient.CreateSessionAsync(
-                entry.Request.AgentId, prompt, cts.Token).ConfigureAwait(false);
-
-            if (!sessionId.Success)
-            {
-                _logger.Warn($"Task {entry.TaskId}: OpenCode session creation failed: {sessionId.RawJson}");
+                _logger.Warn($"Task {entry.TaskId}: runtime resolution failed: {ex.Message}");
                 entry.Status = BridgeTaskStatusValues.Failed;
                 entry.Error = new BridgeError
                 {
-                    Code = "OPENCODE_CONNECTION_FAILED",
-                    Message = $"Failed to connect to OpenCode: {sessionId.RawJson}",
-                    Retryable = true
-                };
-                return;
-            }
-
-            _logger.Info($"Task {entry.TaskId}: session created (id={sessionId.SessionId}), sending message");
-            entry.Stage = "processing";
-            entry.Message = "Agent is processing...";
-
-            if (string.IsNullOrEmpty(sessionId.SessionId))
-            {
-                _logger.Warn($"Task {entry.TaskId}: OpenCode returned null/empty sessionId");
-                entry.Status = BridgeTaskStatusValues.Failed;
-                entry.Error = new BridgeError
-                {
-                    Code = "OPENCODE_SESSION_FAILED",
-                    Message = "OpenCode returned no session ID",
-                    Retryable = true
-                };
-                return;
-            }
-
-            var messageResponse = await _openCodeClient.SendMessageAsync(
-                sessionId.SessionId, entry.Request.UserMessage, cts.Token).ConfigureAwait(false);
-
-            if (!messageResponse.Success)
-            {
-                _logger.Warn($"Task {entry.TaskId}: OpenCode message failed: {messageResponse.RawJson}");
-                entry.Status = BridgeTaskStatusValues.Failed;
-                entry.Error = new BridgeError
-                {
-                    Code = "OPENCODE_MESSAGE_FAILED",
-                    Message = $"Agent failed: {messageResponse.RawJson}",
+                    Code = "RUNTIME_NOT_FOUND",
+                    Message = ex.Message,
                     Retryable = false
                 };
                 return;
             }
 
-            _logger.Info($"Task {entry.TaskId}: completed successfully");
-            entry.Status = BridgeTaskStatusValues.Completed;
-            entry.Stage = "completed";
-            entry.Response = messageResponse.RawJson;
-            entry.Message = "Task completed successfully";
+            entry.RuntimeId = runtime.Id;
+            _logger.Info($"Task {entry.TaskId}: resolved to runtime '{runtime.Id}' ({runtime.DisplayName})");
+
+            // Check availability
+            entry.Stage = "checking_availability";
+            entry.Message = $"Checking {runtime.DisplayName} availability...";
+
+            var availability = await runtime.CheckAvailabilityAsync(cts.Token).ConfigureAwait(false);
+            if (!availability.Available)
+            {
+                var availableRuntimes = _runtimeRegistry.GetAllRuntimes();
+                var availableList = string.Join(", ", availableRuntimes.Select(r => r.Id));
+
+                _logger.Warn($"Task {entry.TaskId}: runtime '{runtime.Id}' is unavailable: {availability.Error}");
+                entry.Status = BridgeTaskStatusValues.Failed;
+                entry.Error = new BridgeError
+                {
+                    Code = "RUNTIME_UNAVAILABLE",
+                    Message = $"Selected runtime `{runtime.Id}` is unavailable.\n"
+                            + $"Executable: {availability.Executable ?? "unknown"}\n"
+                            + $"Reason: {availability.Error ?? "unknown"}\n"
+                            + $"Available runtimes: {availableList}",
+                    Retryable = false
+                };
+                return;
+            }
+
+            entry.RuntimeVersion = availability.Version;
+
+            // Build prompt
+            entry.Stage = "building_prompt";
+            entry.Message = "Building prompt...";
+
+            var prompt = BuildPrompt(entry.Request);
+
+            // Create the runtime task request
+            var runtimeRequest = new AgentTaskRequest
+            {
+                TaskId = entry.TaskId,
+                CorrelationId = entry.CorrelationId,
+                Action = entry.Request.Action,
+                AgentId = entry.Request.AgentId,
+                Prompt = prompt,
+                RuntimeOverride = entry.Request.Runtime,
+                Project = entry.Request.Project,
+                Selection = entry.Request.Selection
+            };
+
+            // Execute
+            entry.Stage = "processing";
+            entry.Message = $"Executing via {runtime.DisplayName}...";
+
+            var progress = new Progress<AgentTaskEvent>(evt =>
+            {
+                entry.Stage = evt.EventType;
+                if (!string.IsNullOrEmpty(evt.Message))
+                    entry.Message = evt.Message;
+            });
+
+            var result = await runtime.ExecuteAsync(
+                runtimeRequest, progress, cts.Token).ConfigureAwait(false);
+
+            if (result.Success)
+            {
+                _logger.Info($"Task {entry.TaskId}: completed successfully via {runtime.Id}");
+                entry.Status = BridgeTaskStatusValues.Completed;
+                entry.Stage = "completed";
+                entry.Response = result.Response;
+                entry.Message = "Task completed successfully";
+            }
+            else
+            {
+                _logger.Warn($"Task {entry.TaskId}: runtime execution failed: {result.Error}");
+                entry.Status = BridgeTaskStatusValues.Failed;
+                entry.Error = new BridgeError
+                {
+                    Code = result.ErrorCode ?? "RUNTIME_TASK_FAILED",
+                    Message = result.Error ?? "Unknown runtime error",
+                    Retryable = result.ErrorCode == "TASK_TIMEOUT" || result.ErrorCode == "RUNTIME_UNAVAILABLE"
+                };
+            }
         }
         catch (OperationCanceledException)
         {
@@ -246,6 +296,8 @@ public sealed class TaskManager : IDisposable
         public string? Message { get; set; }
         public string? Response { get; set; }
         public BridgeError? Error { get; set; }
+        public string? RuntimeId { get; set; }
+        public string? RuntimeVersion { get; set; }
         public BridgeTaskRequest Request { get; init; } = null!;
         public DateTime CreatedAt { get; init; }
         public DateTime? CompletedAt { get; set; }
@@ -260,5 +312,7 @@ public sealed class TaskManager : IDisposable
         public string? Message { get; init; }
         public string? Response { get; init; }
         public BridgeError? Error { get; init; }
+        public string? RuntimeId { get; init; }
+        public string? RuntimeVersion { get; init; }
     }
 }

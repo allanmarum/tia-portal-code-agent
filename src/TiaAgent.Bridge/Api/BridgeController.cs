@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -7,11 +8,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using TiaAgent.Bridge.Configuration;
 using TiaAgent.Bridge.Diagnostics;
-using TiaAgent.Bridge.OpenCode;
+using TiaAgent.Bridge.Runtime;
 using TiaAgent.Bridge.Security;
 using TiaAgent.Bridge.Sessions;
 using TiaAgent.Bridge.Tasks;
 using TiaAgent.Contracts.Bridge;
+using TiaAgent.Contracts.Runtime;
 
 namespace TiaAgent.Bridge.Api;
 
@@ -22,12 +24,16 @@ public sealed class BridgeController : IDisposable
         PropertyNameCaseInsensitive = true
     };
 
+    private static readonly JsonSerializerOptions s_jsonWriteOptions = new()
+    {
+        WriteIndented = true
+    };
+
     private readonly HttpListener _listener;
     private readonly BridgeConfig _config;
     private readonly BridgeLogger _logger;
     private readonly TokenProvider _tokenProvider;
-    private readonly OpenCodeClient _openCodeClient;
-    private readonly SessionManager _sessionManager;
+    private readonly RuntimeRegistry _runtimeRegistry;
     private readonly TaskManager _taskManager;
     private readonly CancellationTokenSource _shutdownCts = new();
 
@@ -35,15 +41,13 @@ public sealed class BridgeController : IDisposable
         BridgeConfig config,
         BridgeLogger logger,
         TokenProvider tokenProvider,
-        OpenCodeClient openCodeClient,
-        SessionManager sessionManager,
+        RuntimeRegistry runtimeRegistry,
         TaskManager taskManager)
     {
         _config = config;
         _logger = logger;
         _tokenProvider = tokenProvider;
-        _openCodeClient = openCodeClient;
-        _sessionManager = sessionManager;
+        _runtimeRegistry = runtimeRegistry;
         _taskManager = taskManager;
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://127.0.0.1:{config.Port}/");
@@ -126,6 +130,25 @@ public sealed class BridgeController : IDisposable
                     cancelTaskId = cancelTaskId.Substring(0, cancelTaskId.Length - "/cancel".Length);
                     await HandleCancelTaskAsync(cancelTaskId, response).ConfigureAwait(false);
                     break;
+
+                // New runtime endpoints
+                case ("GET", "/api/runtimes"):
+                    await HandleListRuntimesAsync(response).ConfigureAwait(false);
+                    break;
+                case ("GET", var p) when p.StartsWith("/api/runtimes/") && p.EndsWith("/health"):
+                    var runtimeId = ExtractSegment(path, "/api/runtimes/", "/health");
+                    if (runtimeId != null)
+                        await HandleRuntimeHealthAsync(runtimeId, response).ConfigureAwait(false);
+                    else
+                        await WriteJsonResponseAsync(response, 404, "{\"error\":\"Not found\"}").ConfigureAwait(false);
+                    break;
+                case ("GET", "/api/settings/runtime"):
+                    await HandleGetRuntimeSettingsAsync(response).ConfigureAwait(false);
+                    break;
+                case ("PUT", "/api/settings/runtime"):
+                    await HandlePutRuntimeSettingsAsync(request, response).ConfigureAwait(false);
+                    break;
+
                 case ("GET", "/diagnostics"):
                     await HandleDiagnosticsAsync(response).ConfigureAwait(false);
                     break;
@@ -170,10 +193,20 @@ public sealed class BridgeController : IDisposable
 
     private async Task HandleHealthAsync(HttpListenerResponse response)
     {
-        var health = await _openCodeClient.HealthCheckAsync().ConfigureAwait(false);
         var instanceId = Environment.GetEnvironmentVariable("TIA_AGENT_INSTANCE_ID") ?? "";
 
-        var healthJson = $"{{\"service\":\"tia-agent-bridge\",\"status\":\"healthy\",\"version\":\"0.1.0\",\"instanceId\":\"{EscapeJson(instanceId)}\",\"openCodeAvailable\":{health.Available.ToString().ToLowerInvariant()},\"openCodeVersion\":\"{EscapeJson(health.Available ? "connected" : "unavailable")}\"}}";
+        // Check the configured default runtime availability
+        var defaultRuntimeId = _runtimeRegistry.GetDefaultRuntimeId();
+        IAgentRuntime? defaultRuntime = null;
+        RuntimeAvailabilityResult? availability = null;
+        try
+        {
+            defaultRuntime = _runtimeRegistry.GetRuntime(defaultRuntimeId);
+            availability = await defaultRuntime.CheckAvailabilityAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch { }
+
+        var healthJson = $"{{\"service\":\"tia-agent-bridge\",\"status\":\"healthy\",\"version\":\"1.0.0\",\"instanceId\":\"{EscapeJson(instanceId)}\",\"runtimeId\":\"{EscapeJson(defaultRuntimeId)}\",\"runtimeDisplayName\":\"{EscapeJson(defaultRuntime?.DisplayName ?? defaultRuntimeId)}\",\"runtimeAvailable\":{(availability?.Available == true ? "true" : "false")},\"runtimeVersion\":\"{EscapeJson(availability?.Version ?? "")}\"}}";
         await WriteJsonResponseAsync(response, 200, healthJson).ConfigureAwait(false);
     }
 
@@ -225,7 +258,9 @@ public sealed class BridgeController : IDisposable
             Stage = status.Stage ?? "",
             Message = status.Message ?? "",
             Response = status.Response ?? "",
-            Error = status.Error
+            Error = status.Error,
+            RuntimeId = status.RuntimeId,
+            RuntimeVersion = status.RuntimeVersion
         };
         await WriteJsonResponseAsync(response, 200, SerializeTaskStatus(result)).ConfigureAwait(false);
     }
@@ -242,8 +277,143 @@ public sealed class BridgeController : IDisposable
         await WriteJsonResponseAsync(response, 200, "{\"status\":\"cancelled\"}").ConfigureAwait(false);
     }
 
+    #region Runtime Endpoints
+
+    private async Task HandleListRuntimesAsync(HttpListenerResponse response)
+    {
+        var runtimes = _runtimeRegistry.GetAllRuntimes();
+        var availability = await _runtimeRegistry.CheckAllAvailabilityAsync(CancellationToken.None).ConfigureAwait(false);
+
+        var sb = new StringBuilder();
+        sb.Append("{\"runtimes\":[");
+        var first = true;
+        foreach (var runtime in runtimes.OrderBy(r => r.Id))
+        {
+            if (!first) sb.Append(',');
+            first = false;
+
+            var avail = availability.GetValueOrDefault(runtime.Id);
+            sb.Append('{');
+            sb.Append($"\"id\":\"{EscapeJson(runtime.Id)}\"");
+            sb.Append($",\"displayName\":\"{EscapeJson(runtime.DisplayName)}\"");
+            sb.Append($",\"available\":{(avail?.Available == true ? "true" : "false")}");
+            sb.Append($",\"version\":\"{EscapeJson(avail?.Version ?? "")}\"");
+            sb.Append($",\"mode\":\"{EscapeJson(avail?.Mode ?? "")}\"");
+            if (!string.IsNullOrEmpty(avail?.Error))
+                sb.Append($",\"error\":\"{EscapeJson(avail.Error)}\"");
+            sb.Append('}');
+        }
+        sb.Append("],\"default\":\"");
+        sb.Append(EscapeJson(_runtimeRegistry.GetDefaultRuntimeId()));
+        sb.Append("\"}");
+
+        await WriteJsonResponseAsync(response, 200, sb.ToString()).ConfigureAwait(false);
+    }
+
+    private async Task HandleRuntimeHealthAsync(string runtimeId, HttpListenerResponse response)
+    {
+        IAgentRuntime runtime;
+        try
+        {
+            runtime = _runtimeRegistry.GetRuntime(runtimeId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            await WriteJsonResponseAsync(response, 404, $"{{\"error\":\"{EscapeJson(ex.Message)}\"}}").ConfigureAwait(false);
+            return;
+        }
+
+        var availability = await runtime.CheckAvailabilityAsync(CancellationToken.None).ConfigureAwait(false);
+        var json = $"{{\"id\":\"{EscapeJson(runtime.Id)}\",\"displayName\":\"{EscapeJson(runtime.DisplayName)}\",\"available\":{(availability.Available ? "true" : "false")},\"version\":\"{EscapeJson(availability.Version ?? "")}\",\"mode\":\"{EscapeJson(availability.Mode ?? "")}\",\"executable\":\"{EscapeJson(availability.Executable ?? "")}\"}}";
+        await WriteJsonResponseAsync(response, 200, json).ConfigureAwait(false);
+    }
+
+    private async Task HandleGetRuntimeSettingsAsync(HttpListenerResponse response)
+    {
+        var defaultId = _runtimeRegistry.GetDefaultRuntimeId();
+        var json = $"{{\"defaultRuntime\":\"{EscapeJson(defaultId)}\"}}";
+        await WriteJsonResponseAsync(response, 200, json).ConfigureAwait(false);
+    }
+
+    private async Task HandlePutRuntimeSettingsAsync(HttpListenerRequest request, HttpListenerResponse response)
+    {
+        var body = await ReadRequestBodyAsync(request).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(body))
+        {
+            await WriteJsonResponseAsync(response, 400, "{\"error\":\"Empty request body\"}").ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("defaultRuntime", out var defaultRuntimeProp))
+            {
+                await WriteJsonResponseAsync(response, 400, "{\"error\":\"Missing 'defaultRuntime' field\"}").ConfigureAwait(false);
+                return;
+            }
+
+            var newDefault = defaultRuntimeProp.GetString();
+            if (string.IsNullOrEmpty(newDefault))
+            {
+                await WriteJsonResponseAsync(response, 400, "{\"error\":\"'defaultRuntime' cannot be empty\"}").ConfigureAwait(false);
+                return;
+            }
+
+            // Validate the runtime exists
+            try
+            {
+                _runtimeRegistry.GetRuntime(newDefault);
+            }
+            catch (InvalidOperationException ex)
+            {
+                await WriteJsonResponseAsync(response, 400, $"{{\"error\":\"{EscapeJson(ex.Message)}\"}}").ConfigureAwait(false);
+                return;
+            }
+
+            // Update the config file
+            var configPath = RuntimeConfigLoader.GetConfigPath();
+            var configDir = Path.GetDirectoryName(configPath);
+            if (configDir != null && !Directory.Exists(configDir))
+                Directory.CreateDirectory(configDir);
+
+            TiaAgentConfig config;
+            if (File.Exists(configPath))
+            {
+                var configJson = File.ReadAllText(configPath);
+                config = JsonSerializer.Deserialize<TiaAgentConfig>(configJson, s_jsonOptions) ?? new TiaAgentConfig();
+            }
+            else
+            {
+                config = new TiaAgentConfig();
+            }
+
+            // Update the default runtime
+            var updatedConfig = new TiaAgentConfig
+            {
+                DefaultRuntime = newDefault,
+                Runtimes = config.Runtimes
+            };
+
+            var outputJson = JsonSerializer.Serialize(updatedConfig, s_jsonWriteOptions);
+            File.WriteAllText(configPath, outputJson);
+
+            _logger.Info($"Default runtime changed to '{newDefault}'");
+            await WriteJsonResponseAsync(response, 200, $"{{\"defaultRuntime\":\"{EscapeJson(newDefault)}\"}}").ConfigureAwait(false);
+        }
+        catch (JsonException)
+        {
+            await WriteJsonResponseAsync(response, 400, "{\"error\":\"Invalid JSON\"}").ConfigureAwait(false);
+        }
+    }
+
+    #endregion
+
     private async Task HandleDiagnosticsAsync(HttpListenerResponse response)
     {
+        var defaultRuntimeId = _runtimeRegistry.GetDefaultRuntimeId();
         var diagnostics = new
         {
             bridge = new
@@ -254,9 +424,10 @@ public sealed class BridgeController : IDisposable
                 maxConcurrentTasks = _config.MaxConcurrentTasks,
                 authTokenFingerprint = TokenFingerprint(_tokenProvider.Token)
             },
-            sessions = new
+            runtime = new
             {
-                activeCount = _sessionManager.ActiveSessionCount
+                defaultId = defaultRuntimeId,
+                registeredCount = _runtimeRegistry.GetAllRuntimes().Count
             },
             tasks = new
             {
@@ -290,9 +461,6 @@ public sealed class BridgeController : IDisposable
         return await reader.ReadToEndAsync().ConfigureAwait(false);
     }
 
-    private static string SerializeHealthResponse(BridgeHealthResponse r) =>
-        $"{{\"status\":\"{r.Status}\",\"bridgeVersion\":\"{r.BridgeVersion}\",\"openCodeAvailable\":{r.OpenCodeAvailable.ToString().ToLowerInvariant()},\"openCodeVersion\":\"{r.OpenCodeVersion}\",\"mcpConfigured\":{r.McpConfigured.ToString().ToLowerInvariant()}}}";
-
     private static string SerializeTaskAccepted(BridgeTaskAccepted a) =>
         $"{{\"taskId\":\"{a.TaskId}\",\"status\":\"{a.Status}\",\"correlationId\":\"{a.CorrelationId}\"}}";
 
@@ -301,7 +469,10 @@ public sealed class BridgeController : IDisposable
         var errorJson = s.Error != null
             ? $",\"error\":{{\"code\":\"{s.Error.Code}\",\"message\":\"{EscapeJson(s.Error.Message)}\",\"retryable\":{s.Error.Retryable.ToString().ToLowerInvariant()}}}"
             : "";
-        return $"{{\"taskId\":\"{s.TaskId}\",\"status\":\"{s.Status}\",\"stage\":\"{EscapeJson(s.Stage)}\",\"message\":\"{EscapeJson(s.Message)}\",\"response\":\"{EscapeJson(s.Response)}\"{errorJson}}}";
+        var runtimeJson = !string.IsNullOrEmpty(s.RuntimeId)
+            ? $",\"runtimeId\":\"{EscapeJson(s.RuntimeId)}\",\"runtimeVersion\":\"{EscapeJson(s.RuntimeVersion ?? "")}\""
+            : "";
+        return $"{{\"taskId\":\"{s.TaskId}\",\"status\":\"{s.Status}\",\"stage\":\"{EscapeJson(s.Stage)}\",\"message\":\"{EscapeJson(s.Message)}\",\"response\":\"{EscapeJson(s.Response)}\"{errorJson}{runtimeJson}}}";
     }
 
     private static string SerializeDiagnostics(object d) =>
@@ -317,7 +488,7 @@ public sealed class BridgeController : IDisposable
             var request = System.Text.Json.JsonSerializer.Deserialize<BridgeTaskRequest>(json, s_jsonOptions);
             if (request != null)
             {
-                _logger.Info($"Deserialized request: action='{request.Action}', agentId='{request.AgentId}', project={request.Project != null}, selection={request.Selection != null}");
+                _logger.Info($"Deserialized request: action='{request.Action}', agentId='{request.AgentId}', runtime='{request.Runtime ?? "default"}', project={request.Project != null}, selection={request.Selection != null}");
             }
             return request;
         }
@@ -326,6 +497,23 @@ public sealed class BridgeController : IDisposable
             _logger.Error($"JSON deserialization failed: {ex.Message}", ex);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Extracts a segment between two path prefixes. E.g. "/api/runtimes/claude/health" with "/api/runtimes/" and "/health" returns "claude".
+    /// </summary>
+    private static string? ExtractSegment(string path, string prefix, string suffix)
+    {
+        if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return null;
+        if (!path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var start = prefix.Length;
+        var end = path.Length - suffix.Length;
+        if (end <= start) return null;
+
+        return path.Substring(start, end - start);
     }
 
     public void Dispose()
