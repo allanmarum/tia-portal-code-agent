@@ -145,11 +145,14 @@ try {
 
     # Step 7: Generate transient credentials
     Write-Host "[7/16] Generating credentials..." -ForegroundColor Yellow
-    $secretsDir = Join-Path $tiaAgentRoot 'runtime' 'secrets'
+    $secretsDir = Join-Path (Join-Path $tiaAgentRoot 'runtime') 'secrets'
     if (-not (Test-Path $secretsDir)) {
         New-Item -ItemType Directory -Path $secretsDir -Force | Out-Null
     }
-    $mcpToken = [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).Replace('+', '-').Replace('/', '_').TrimEnd('=')
+    $rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider
+    $bytes = New-Object byte[] 32
+    $rng.GetBytes($bytes)
+    $mcpToken = [Convert]::ToBase64String($bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=')
     $mcpTokenFile = Join-Path $secretsDir 'mcp.token'
     $mcpToken | Out-File -FilePath $mcpTokenFile -Encoding UTF8 -Force
     Write-Host "  MCP token generated" -ForegroundColor Green
@@ -177,7 +180,7 @@ try {
     }
     $bridgeConfig | ConvertTo-Json | Out-File -FilePath $bridgeConfigPath -Encoding UTF8 -Force
 
-    $bridgeLog = Join-Path $tiaAgentRoot 'logs' 'bridge.log'
+    $bridgeLog = Join-Path (Join-Path $tiaAgentRoot 'logs') 'bridge.log'
     $bridgeResult = Start-TiaAgentService -ServiceName 'bridge' -ExecutablePath 'dotnet' -Arguments @('exec', $bridgeDll) -WorkingDirectory $RepoRoot -LogFile $bridgeLog -InstanceId $instanceId -EnvironmentVariables @{ 'TIA_AGENT_INSTANCE_ID' = $instanceId }
     $bridgeProcess = $bridgeResult.Process
     Write-Host "  Bridge started (PID: $($bridgeResult.Pid))" -ForegroundColor Green
@@ -192,7 +195,7 @@ try {
     }
 
     # Update manifest with bridge PID
-    New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'starting' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus 'pending'
+    New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'starting' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus 'pending' -BridgePid $bridgeResult.Pid
     Write-Host "  Bridge healthy" -ForegroundColor Green
 
     # Step 11: Generate OpenCode config
@@ -202,17 +205,28 @@ try {
 
     # Step 12: Start OpenCode
     Write-Host "[12/16] Starting OpenCode..." -ForegroundColor Yellow
-    $opencodeLog = Join-Path $tiaAgentRoot 'logs' 'opencode.log'
+    $opencodeLog = Join-Path (Join-Path $tiaAgentRoot 'logs') 'opencode.log'
 
-    # Find mimo executable
+    # Find mimo executable - resolve to actual node.exe for proper process tracking.
+    # The mimo.ps1 wrapper spawns a child node.exe process that survives if we
+    # only track the wrapper. By running node.exe directly, we track the real process.
     $mimoExe = Get-Command mimo -ErrorAction SilentlyContinue
     if (-not $mimoExe) {
         throw "OpenCode CLI (mimo) not found"
     }
 
-    # mimo serve picks up .mimocode/mimocode.jsonc from the working directory.
-    # We use the generated workDir which contains the config.
-    $opencodeResult = Start-TiaAgentService -ServiceName 'opencode' -ExecutablePath $mimoExe.Source -Arguments @('serve', '--port', $opencodePort.ToString()) -WorkingDirectory $mimoConfig.WorkingDirectory -LogFile $opencodeLog -InstanceId $instanceId
+    $mimoSource = $mimoExe.Source
+    $mimoDir = Split-Path $mimoSource -Parent
+    $nodeExe = Join-Path $mimoDir 'node.exe'
+    $mimoScript = Join-Path $mimoDir 'node_modules\@mimo-ai\cli\bin\mimo'
+
+    if ((Test-Path $nodeExe) -and (Test-Path $mimoScript)) {
+        # Use node.exe directly for proper process lifecycle tracking
+        $opencodeResult = Start-TiaAgentService -ServiceName 'opencode' -ExecutablePath $nodeExe -Arguments @($mimoScript, 'serve', '--port', $opencodePort.ToString()) -WorkingDirectory $mimoConfig.WorkingDirectory -LogFile $opencodeLog -InstanceId $instanceId
+    } else {
+        # Fallback to mimo wrapper
+        $opencodeResult = Start-TiaAgentService -ServiceName 'opencode' -ExecutablePath $mimoSource -Arguments @('serve', '--port', $opencodePort.ToString()) -WorkingDirectory $mimoConfig.WorkingDirectory -LogFile $opencodeLog -InstanceId $instanceId
+    }
     $opencodeProcess = $opencodeResult.Process
     Write-Host "  OpenCode started (PID: $($opencodeResult.Pid))" -ForegroundColor Green
 
@@ -221,14 +235,14 @@ try {
     $opencodeHealthUrl = "http://127.0.0.1:$opencodePort/health"
     $opencodeHealthy = Wait-TiaAgentHealth -Url $opencodeHealthUrl -TimeoutSeconds $settings.healthCheckTimeoutSeconds -RetryIntervalMs $settings.healthCheckRetryIntervalMs -ServiceName 'opencode'
     if (-not $opencodeHealthy) {
-        New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'failed' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus 'failed'
+        New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'failed' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus 'failed' -BridgePid $bridgeResult.Pid -OpenCodePid $opencodeResult.Pid
         throw "OpenCode health check failed"
     }
     Write-Host "  OpenCode healthy" -ForegroundColor Green
 
     # Step 14: Publish runtime status as ready
     Write-Host "[14/16] Publishing ready status..." -ForegroundColor Yellow
-    New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'ready' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus 'healthy'
+    New-TiaAgentRuntimeManifest -InstanceId $instanceId -Status 'ready' -BridgePort $bridgePort -OpenCodePort $opencodePort -BridgeStatus 'healthy' -OpenCodeStatus 'healthy' -BridgePid $bridgeResult.Pid -OpenCodePid $opencodeResult.Pid
     Write-Host "  Runtime status: ready" -ForegroundColor Green
 
     # Step 15: Display summary
@@ -254,12 +268,18 @@ try {
         Write-Host "Monitoring services (Ctrl+C to stop)..." -ForegroundColor Gray
         Write-Host ""
 
-        # Set up Ctrl+C handler
-        [Console]::TreatControlCAsInput = $true
+        # Set up Ctrl+C handler (may fail if no console is attached)
+        $hasConsole = $false
+        try {
+            [Console]::TreatControlCAsInput = $true
+            $hasConsole = $true
+        } catch {
+            Write-Host "  No console attached, Ctrl+C handler disabled" -ForegroundColor DarkYellow
+        }
 
         while (-not $shutdownRequested) {
-            # Check for Ctrl+C
-            if ([Console]::KeyAvailable) {
+            # Check for Ctrl+C (only if console is available)
+            if ($hasConsole -and [Console]::KeyAvailable) {
                 $key = [Console]::ReadKey($true)
                 if ($key.Modifiers -band [ConsoleModifiers]::Control -and $key.Key -eq 'C') {
                     $shutdownRequested = $true

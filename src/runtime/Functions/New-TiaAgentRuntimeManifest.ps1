@@ -38,7 +38,10 @@ function New-TiaAgentRuntimeManifest {
         [string]$BridgeStatus = 'pending',
 
         [ValidateSet('pending', 'starting', 'healthy', 'unhealthy', 'stopped', 'failed')]
-        [string]$OpenCodeStatus = 'pending'
+        [string]$OpenCodeStatus = 'pending',
+
+        [int]$BridgePid = 0,
+        [int]$OpenCodePid = 0
     )
 
     $now = (Get-Date).ToString('o')
@@ -80,7 +83,7 @@ function New-TiaAgentRuntimeManifest {
         services      = [ordered]@{
             bridge = [ordered]@{
                 status    = $BridgeStatus
-                pid       = 0
+                pid       = $BridgePid
                 host      = $bridgeHost
                 port      = $BridgePort
                 baseUrl   = if ($BridgePort -gt 0) { "http://${bridgeHost}:${BridgePort}" } else { '' }
@@ -88,7 +91,7 @@ function New-TiaAgentRuntimeManifest {
             }
             opencode = [ordered]@{
                 status    = $OpenCodeStatus
-                pid       = 0
+                pid       = $OpenCodePid
                 host      = $openCodeHost
                 port      = $OpenCodePort
                 baseUrl   = if ($OpenCodePort -gt 0) { "http://${openCodeHost}:${OpenCodePort}" } else { '' }

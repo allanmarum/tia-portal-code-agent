@@ -89,7 +89,18 @@ if ($manifest) {
                 $health = Invoke-RestMethod -Uri $manifest.services.opencode.healthUrl -TimeoutSec 3 -Method Get -ErrorAction Stop
                 $opencodeHealthy = $health.status -eq 'healthy' -or $health.status -eq 'ok'
             }
-            catch { }
+            catch {
+                # For non-2xx responses (like 503), check TCP connectivity as fallback.
+                # mimo serve returns 503 for /health when Web UI is unavailable in headless mode.
+                if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -ge 500) {
+                    try {
+                        $tcp = New-Object System.Net.Sockets.TcpClient
+                        $tcp.Connect("127.0.0.1", $manifest.services.opencode.port)
+                        $tcp.Close()
+                        $opencodeHealthy = $true
+                    } catch { }
+                }
+            }
         }
     }
 }

@@ -45,20 +45,24 @@ function Start-TiaAgentService {
         }
     }
 
-    # Start process via cmd.exe /c to handle console allocation properly
-    # This avoids issues with CreateNoWindow and missing console for Node.js processes
+    # Start process directly (no cmd.exe wrapper).
+    # We avoid cmd.exe wrapping because it changes process lifecycle:
+    # when node.exe spawns child processes (like mimo), cmd.exe may exit
+    # before the child finishes, leaving orphaned processes.
+    # For .ps1 scripts, we still use powershell.exe as the host.
     $argString = $Arguments -join ' '
-    $cmdLine = "`"$resolvedExe`" $argString"
-
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = 'cmd.exe'
-    $psi.Arguments = "/c `"$cmdLine`""
+
+    if ($resolvedExe.EndsWith('.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $psi.FileName = 'powershell.exe'
+        $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$resolvedExe`" $argString"
+    } else {
+        $psi.FileName = $resolvedExe
+        $psi.Arguments = $argString
+    }
     $psi.WorkingDirectory = $WorkingDirectory
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.RedirectStandardInput = $true
 
     # Set environment variables
     foreach ($key in $EnvironmentVariables.Keys) {
@@ -69,9 +73,7 @@ function Start-TiaAgentService {
     $process.StartInfo = $psi
 
     try {
-        # Close stdin immediately to prevent process from waiting for input
         $process.Start() | Out-Null
-        try { $process.StandardInput.Close() } catch { }
 
         Write-TiaAgentLog -Level 'INFO' -Service $ServiceName -InstanceId $InstanceId -Event 'process_started' -Message "$ServiceName started with PID $($process.Id)"
 
@@ -80,21 +82,11 @@ function Start-TiaAgentService {
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         while ($sw.Elapsed -lt $timeout) {
             if ($process.HasExited) {
-                # Capture output before throwing
-                $exitOutput = ''
-                $exitError = ''
-                try {
-                    $exitOutput = $process.StandardOutput.ReadToEnd()
-                    $exitError = $process.StandardError.ReadToEnd()
-                } catch { }
-                if ($LogFile -and ($exitOutput -or $exitError)) {
-                    $ts = [DateTime]::UtcNow.ToString('o')
-                    $logContent = ""
-                    if ($exitOutput) { $logContent += "[$ts] $exitOutput`n" }
-                    if ($exitError) { $logContent += "[$ts] [ERROR] $exitError`n" }
-                    try { [System.IO.File]::AppendAllText($LogFile, $logContent) } catch { }
+                $logHint = ''
+                if ($LogFile -and (Test-Path $LogFile)) {
+                    $logHint = ". Check log: $LogFile"
                 }
-                throw "$ServiceName exited unexpectedly with code $($process.ExitCode). Output: $exitOutput. Error: $exitError"
+                throw "$ServiceName exited unexpectedly with code $($process.ExitCode)$logHint"
             }
             Start-Sleep -Milliseconds 100
         }

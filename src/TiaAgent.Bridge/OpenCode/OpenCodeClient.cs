@@ -22,9 +22,9 @@ public sealed class OpenCodeClient : IDisposable
         try
         {
             var response = await _httpClient.GetAsync($"{_baseUrl}/health", cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-                return new HealthResponse { Available = false, Error = $"HTTP {(int)response.StatusCode}" };
-
+            // Accept any HTTP response (including 503) as "server is running".
+            // mimo serve returns 503 for /health when Web UI is unavailable in headless mode,
+            // but the server itself is running and ready to accept MCP requests.
             var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             return new HealthResponse { Available = true, RawJson = body };
         }

@@ -56,7 +56,6 @@ function Test-TiaAgentPortAvailable {
         $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
         $listener.Start()
         $listener.Stop()
-        $listener.Dispose()
         return $true
     }
     catch {

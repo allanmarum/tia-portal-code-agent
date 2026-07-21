@@ -19,7 +19,8 @@
         'Test-TiaAgentStaleRuntime',
         'Lock-TiaAgentSupervisor',
         'Write-TiaAgentLog',
-        'Stop-TiaAgentService'
+        'Stop-TiaAgentService',
+        'Test-TcpConnectivity'
     )
     CmdletsToExport   = @()
     VariablesToExport  = @()
