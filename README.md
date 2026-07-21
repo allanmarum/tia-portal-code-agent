@@ -5,17 +5,18 @@
 [![TIA Portal](https://img.shields.io/badge/TIA%20Portal-V21-009999)](#requirements)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](#requirements)
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%20Framework%204.8-512BD4)](#requirements)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-A local, AI-assisted engineering interface for Siemens TIA Portal. The project connects contextual actions inside a TIA Portal Add-In to interchangeable coding-agent runtimes and exposes project data through the Model Context Protocol (MCP).
+A local, AI-assisted engineering interface for Siemens TIA Portal. The project connects contextual actions inside a TIA Portal Add-In to interchangeable coding-agent runtimes and exposes supported project data through the Model Context Protocol (MCP).
 
 > [!CAUTION]
 > **This project is under active development and is not ready for production use.**
 >
-> Do not use it on live production systems, safety programs, or any workflow where an incorrect response or modification could affect people, equipment, availability, or regulatory compliance. Current work is focused on experimental, read-only engineering assistance and end-to-end validation.
+> Do not use it on live production systems, safety programs, or workflows where an incorrect response or modification could affect people, equipment, availability, or regulatory compliance. The current focus is experimental, read-only engineering assistance and end-to-end validation.
 
 ## Overview
 
-TIA Portal Code Agent is designed to let an engineer select an object in TIA Portal and invoke contextual actions such as:
+TIA Portal Code Agent is designed to let an engineer select an object in TIA Portal and invoke contextual AI-assisted actions such as:
 
 - Explain a PLC block or project object.
 - Review logic and identify potential issues.
@@ -24,7 +25,7 @@ TIA Portal Code Agent is designed to let an engineer select an object in TIA Por
 - Generate engineering documentation.
 - Prepare controlled change proposals for future approval-based workflows.
 
-The Add-In remains the user-facing integration inside TIA Portal. A local Bridge manages task execution and delegates each request to the configured agent runtime. The runtime uses `tia-mcp` to access supported TIA Portal Openness capabilities.
+The TIA Portal Add-In remains the user-facing integration. A local Bridge manages task execution and delegates each request to the configured agent runtime. The runtime uses `tia-mcp` to access supported TIA Portal Openness capabilities.
 
 ## Project Status
 
@@ -146,7 +147,7 @@ TIA Portal V21 uses modular Add-In assemblies. Do not add references to the remo
 ### 1. Clone the repository
 
 ```powershell
-git clone https://github.com/allanmarum/tia-portal-code-agent.git
+git clone https://github.com/industrix-com-br/tia-portal-code-agent.git
 cd tia-portal-code-agent
 ```
 
@@ -242,13 +243,13 @@ Runtime state, service discovery, transient secrets, and logs are stored under:
 ### 7. Activate and test the Add-In
 
 1. Open TIA Portal V21.
-2. Open a test project containing a PLC program.
+2. Open a disposable test project containing a PLC program.
 3. Go to **Options > Settings > Add-Ins**.
 4. Activate **TIA Portal Code Agent** and review the requested permissions.
 5. Right-click a supported PLC object.
 6. Select an action under **AI Assistant**.
 
-Use a disposable test project. Do not begin validation on an operational production project.
+Do not begin validation on an operational production project.
 
 For the complete runbook, see [Running End-to-End](docs/RUN.md).
 
@@ -277,6 +278,7 @@ tia-portal-code-agent/
 │   └── RUNTIME.md               # Multi-runtime configuration
 ├── build.ps1                    # Build, test, package, and install entry point
 ├── AGENTS.md                    # Instructions for coding agents
+├── LICENSE                      # Apache License 2.0
 └── TiaAgent.sln
 ```
 
@@ -350,7 +352,7 @@ This project is evolving quickly. Before making changes:
 2. Confirm the current implementation phase and supported scope.
 3. Keep changes focused and preserve architectural boundaries.
 4. Run the relevant build and tests.
-5. Document assumptions, limitations, and any newly discovered compatibility constraints.
+5. Document assumptions, limitations, and newly discovered compatibility constraints.
 
 Bug reports and pull requests should include the TIA Portal version, relevant runtime, reproducible steps, expected behavior, actual behavior, and sanitized logs where available.
 
@@ -362,4 +364,4 @@ Siemens, SIMATIC, TIA Portal, and related product names are trademarks of their 
 
 ## License
 
-No project license has been published yet. Do not assume permission for production use, redistribution, or commercial deployment until a license is added.
+Licensed under the [Apache License 2.0](LICENSE). You may use, modify, and distribute the project under the terms of that license.
