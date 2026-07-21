@@ -29,23 +29,6 @@ function New-TiaAgentOpenCodeConfig {
         [string]$McpCommand = 'tia-mcp'
     )
 
-    # Find source config
-    if (-not $SourceConfigPath -or -not (Test-Path $SourceConfigPath)) {
-        $repoRoot = (Get-Item $PSScriptRoot).Parent.Parent.Parent.FullName
-        $SourceConfigPath = Join-Path $repoRoot 'config' 'opencode.json'
-    }
-
-    # Read source config if available (for preserving agents/model settings)
-    $sourceConfig = $null
-    if (Test-Path $SourceConfigPath) {
-        try {
-            $sourceConfig = Get-Content $SourceConfigPath -Raw | ConvertFrom-Json
-        }
-        catch {
-            Write-TiaAgentLog -Level 'WARN' -Event 'opencode_config_read_error' -Message "Failed to read source config: $($_.Exception.Message)"
-        }
-    }
-
     # Resolve MCP command path dynamically
     $resolvedMcpCommand = $McpCommand
     $mcpExe = Get-Command $McpCommand -ErrorAction SilentlyContinue
@@ -55,7 +38,7 @@ function New-TiaAgentOpenCodeConfig {
 
     # Create a self-contained working directory with .mimocode/mimocode.jsonc
     # mimo serve picks up project-level config from the CWD's .mimocode/ directory
-    $workDir = Join-Path $TiaAgentRoot 'runtime' 'opencode-workdir'
+    $workDir = Join-Path (Join-Path $TiaAgentRoot 'runtime') 'opencode-workdir'
     $mimoConfigDir = Join-Path $workDir '.mimocode'
     if (-not (Test-Path $mimoConfigDir)) {
         New-Item -ItemType Directory -Path $mimoConfigDir -Force | Out-Null
@@ -77,15 +60,10 @@ function New-TiaAgentOpenCodeConfig {
         mcp    = $mcpSection
     }
 
-    # Preserve agents if present in source config
-    if ($sourceConfig -and $sourceConfig.agents) {
-        $generated.agents = $sourceConfig.agents
-    }
-
-    # Preserve model if present in source config
-    if ($sourceConfig -and $sourceConfig.model) {
-        $generated.model = $sourceConfig.model
-    }
+    # Note: agents and model from source config are not copied because
+    # mimocode.jsonc uses a different schema than opencode.json.
+    # The model field in mimocode.jsonc must be a string (e.g. "openai/gpt-4o"),
+    # not an object. Agents are configured differently in mimo.
 
     # Write mimocode.jsonc
     $generatedPath = Join-Path $mimoConfigDir 'mimocode.jsonc'

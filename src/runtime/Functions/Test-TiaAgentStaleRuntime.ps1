@@ -67,6 +67,15 @@ function Test-TiaAgentStaleRuntime {
         }
     }
 
+    # Clean stale mimo/node processes from crashed supervisor
+    # These are orphaned OpenCode processes that survived a supervisor crash.
+    # Kill all mimo processes since we're about to start a fresh one.
+    $staleMimoProcesses = Get-Process -Name 'mimo' -ErrorAction SilentlyContinue
+    foreach ($proc in $staleMimoProcesses) {
+        Write-TiaAgentLog -Level 'WARN' -Event 'stale_process_killed' -Message "Killing stale mimo process (PID: $($proc.Id), started: $($proc.StartTime))"
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    }
+
     # Clean stale secrets (older than 24 hours)
     $secretsDir = Join-Path $runtimeDir 'secrets'
     if (Test-Path $secretsDir) {

@@ -25,7 +25,7 @@ function Lock-TiaAgentSupervisor {
 
     if (-not $createdNew) {
         # Another supervisor is running - check if stale
-        $lockPath = Join-Path $TiaAgentRoot 'runtime' 'supervisor.lock'
+        $lockPath = Join-Path (Join-Path $TiaAgentRoot 'runtime') 'supervisor.lock'
         if (Test-Path $lockPath) {
             try {
                 $lock = Get-Content $lockPath -Raw | ConvertFrom-Json

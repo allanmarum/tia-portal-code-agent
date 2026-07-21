@@ -14,7 +14,7 @@ function Initialize-TiaAgentPaths {
         $TiaAgentRoot,
         (Join-Path $TiaAgentRoot 'config'),
         (Join-Path $TiaAgentRoot 'runtime'),
-        (Join-Path $TiaAgentRoot 'runtime' 'secrets'),
+        (Join-Path (Join-Path $TiaAgentRoot 'runtime') 'secrets'),
         (Join-Path $TiaAgentRoot 'logs'),
         (Join-Path $TiaAgentRoot 'scripts'),
         (Join-Path $TiaAgentRoot 'temp')

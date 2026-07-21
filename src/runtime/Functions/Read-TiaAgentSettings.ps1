@@ -11,8 +11,8 @@ function Read-TiaAgentSettings {
     #>
     [CmdletBinding()]
     param(
-        [string]$SettingsPath = (Join-Path $env:LOCALAPPDATA 'TiaAgent' 'config' 'settings.json'),
-        [string]$ExamplePath = (Join-Path (Get-Item $PSScriptRoot).Parent.Parent.Parent.FullName 'config' 'settings.example.json')
+        [string]$SettingsPath = (Join-Path (Join-Path (Join-Path $env:LOCALAPPDATA 'TiaAgent') 'config') 'settings.json'),
+        [string]$ExamplePath = (Join-Path (Join-Path (Get-Item $PSScriptRoot).Parent.Parent.Parent.FullName 'config') 'settings.example.json')
     )
 
     $defaults = [ordered]@{
