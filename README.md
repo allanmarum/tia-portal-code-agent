@@ -1,447 +1,365 @@
 # TIA Portal Code Agent
 
-An AI-powered engineering assistant integrated into Siemens TIA Portal through an Add-In, enabling contextual explanations, code review, dependency analysis, and controlled change proposals — all driven by a coding-agent runtime via the Model Context Protocol (MCP).
+[![Status](https://img.shields.io/badge/status-active%20development-orange)](#project-status)
+[![Production](https://img.shields.io/badge/production-not%20ready-red)](#project-status)
+[![TIA Portal](https://img.shields.io/badge/TIA%20Portal-V21-009999)](#requirements)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](#requirements)
+[![.NET](https://img.shields.io/badge/.NET-8%20%7C%20Framework%204.8-512BD4)](#requirements)
 
-> **Status:** Functional. Add-In loads in TIA Portal V21, Bridge architecture implemented, context menus work, MCP server connects via Bridge.
+A local, AI-assisted engineering interface for Siemens TIA Portal. The project connects contextual actions inside a TIA Portal Add-In to interchangeable coding-agent runtimes and exposes project data through the Model Context Protocol (MCP).
 
-## Table of Contents
+> [!CAUTION]
+> **This project is under active development and is not ready for production use.**
+>
+> Do not use it on live production systems, safety programs, or any workflow where an incorrect response or modification could affect people, equipment, availability, or regulatory compliance. Current work is focused on experimental, read-only engineering assistance and end-to-end validation.
 
-- [Problem](#problem)
-- [Solution](#solution)
-- [Architecture](#architecture)
-- [Target Environment](#target-environment)
-- [Use Cases](#use-cases)
-- [MVP Scope](#mvp-scope)
-- [Non-Goals](#non-goals)
-- [Security Model](#security-model)
-- [Repository Structure](#repository-structure)
-- [Getting Started](#getting-started)
-- [Development](#development)
-- [Testing](#testing)
-- [Packaging and Installation](#packaging-and-installation)
-- [Known Unknowns](#known-unknowns)
-- [Contributing](#contributing)
-- [License](#license)
+## Overview
 
-## Problem
+TIA Portal Code Agent is designed to let an engineer select an object in TIA Portal and invoke contextual actions such as:
 
-Engineering work in TIA Portal involves repeated navigation, inspection, documentation, review, reference tracing, and validation tasks. TIA Portal Openness can automate supported engineering functions, but an external tool lacks the exact user context that exists inside the TIA Portal UI.
+- Explain a PLC block or project object.
+- Review logic and identify potential issues.
+- Trace dependencies, references, and signal usage.
+- Interpret compilation diagnostics.
+- Generate engineering documentation.
+- Prepare controlled change proposals for future approval-based workflows.
 
-## Solution
+The Add-In remains the user-facing integration inside TIA Portal. A local Bridge manages task execution and delegates each request to the configured agent runtime. The runtime uses `tia-mcp` to access supported TIA Portal Openness capabilities.
 
-The product combines three roles into a single experience:
+## Project Status
 
-| Component | Role |
+The repository contains a working experimental architecture, but it has **not** reached production readiness.
+
+| Area | Current state |
 |---|---|
-| **TIA Portal Add-In** | Eyes, hands, and trigger inside TIA — captures context, displays results, controls approvals |
-| **Czarnak/tia-portal-mcp** | External MCP server — standardized contract for TIA capabilities via batch read/write tools |
-| **OpenCode/MiMoCode (Agent Runtime)** | Brain — session management, planning, model integration, tool calling |
+| TIA Portal V21 Add-In | Implemented and under validation |
+| Context-menu actions | Implemented for supported project objects |
+| Local Bridge API | Implemented |
+| Runtime Supervisor | Implemented |
+| Mimo CLI adapter | Experimental |
+| OpenCode server/CLI adapter | Experimental |
+| Claude Code CLI adapter | Experimental |
+| MCP integration through `tia-mcp` | Implemented and under end-to-end validation |
+| Read-only agent workflows | Current MVP focus |
+| Approval-gated project changes | Planned / experimental groundwork only |
+| PLC download, safety, hardware, and network changes | Not supported |
+| Production deployment | **Not supported** |
 
-The user invokes an action from the TIA Portal context menu. The Add-In captures the selected object, starts a task in the agent runtime, and the agent uses the external MCP server to read, analyze, and (with approval) modify the project.
+Expect breaking changes in configuration, APIs, packaging, runtime behavior, and supported TIA Portal objects while development continues.
 
 ## Architecture
 
-```
-User → TIA Portal → Add-In → TiaAgent.Bridge → OpenCode Agent → stdio MCP → Czarnak tia-mcp → OpennessWorker → TIA Portal Openness
+```mermaid
+flowchart LR
+    U[Engineer] --> TIA[TIA Portal V21]
+    TIA --> ADDIN[TiaAgent Add-In]
+    ADDIN -->|Local HTTP| BRIDGE[TiaAgent Bridge]
+    BRIDGE --> RUNTIME{Agent Runtime}
+    RUNTIME --> MIMO[Mimo CLI]
+    RUNTIME --> OPENCODE[OpenCode Server or CLI]
+    RUNTIME --> CLAUDE[Claude Code CLI]
+    MIMO --> MCP[tia-mcp via stdio]
+    OPENCODE --> MCP
+    CLAUDE --> MCP
+    MCP --> OPENNESS[TIA Portal Openness]
+    OPENNESS --> PROJECT[Open TIA Project]
 ```
 
-### Layers
+### Responsibilities
 
-| Project | Responsibility |
+| Component | Responsibility |
 |---|---|
-| `TiaAgent.AddIn` | Contextual commands, selection capture, result/progress UI, Bridge client |
-| `TiaAgent.Bridge` | Local HTTP API, task/session management, OpenCode client, process management |
-| `TiaAgent.Contracts` | Stable DTOs, interfaces, error codes, events — no Siemens types |
-| `TiaAgent.OpenCode` | HTTP client for OpenCode/MiMoCode agent runtime (used by Bridge only) |
-| **Runtime Supervisor** | PowerShell scripts for service lifecycle management |
+| **TIA Portal Add-In** | Captures the selected object, exposes contextual commands, submits tasks, and displays progress and results |
+| **TiaAgent Bridge** | Provides the local task API, resolves the selected runtime, manages execution, cancellation, diagnostics, and result normalization |
+| **Runtime Supervisor** | Validates prerequisites, starts required local services, allocates ports, monitors health, and publishes service-discovery metadata |
+| **Agent Runtime** | Performs model interaction, reasoning, session handling, and MCP tool calls |
+| **`tia-mcp`** | Exposes supported TIA Portal capabilities through MCP and delegates them to TIA Portal Openness |
+| **TIA Portal Openness** | Provides programmatic access to supported engineering objects and operations |
 
-### External Components (not in this repo)
+The Add-In is runtime-agnostic. Switching between Mimo, OpenCode, and Claude Code does not require changing the Add-In or the Bridge task contract.
 
-| Component | Source | Role |
+## Supported Agent Runtimes
+
+| Runtime | ID | Execution mode |
 |---|---|---|
-| **Czarnak/tia-portal-mcp** | [GitHub](https://github.com/Czarnak/tia-portal-mcp) | MCP server — TIA Portal access via stdio transport |
-| **OpenCode/MiMoCode** | Agent runtime | AI model interaction, tool-calling loop |
+| Mimo CLI | `mimo` | One CLI process per task |
+| OpenCode | `opencode` | Local HTTP server or one CLI process per task |
+| Claude Code CLI | `claude` | One CLI process per task |
 
-### MCP Server (Czarnak/tia-portal-mcp)
+Runtime selection precedence:
 
-Install as a .NET global tool:
+1. Runtime specified in the task request.
+2. `TIA_AGENT_RUNTIME` environment variable.
+3. `defaultRuntime` in `%LOCALAPPDATA%\TiaAgent\config.json`.
+4. `opencode` as the built-in default.
+
+The Bridge does not silently switch runtimes when the selected runtime is unavailable. It returns an actionable error instead.
+
+See [Runtime Configuration](docs/RUNTIME.md) for adapter behavior, configuration fields, and troubleshooting.
+
+## Safety Model
+
+The MVP follows a read-only-first approach.
+
+### Allowed experimental scope
+
+- Read project metadata.
+- Inspect supported blocks and interfaces.
+- Browse supported project structures.
+- Analyze references and dependencies when exposed by the underlying APIs.
+- Explain compilation messages.
+- Produce suggestions and documentation.
+
+### Outside the supported scope
+
+- Downloading to a PLC.
+- Starting, stopping, or controlling equipment.
+- Online process control or monitoring actions.
+- Safety-program modification.
+- Arbitrary hardware or industrial-network changes.
+- Unattended project-wide refactoring.
+- Applying changes without an explicit preview and approval flow.
+- Exposing Bridge or MCP services to an untrusted network.
+
+Project content must be treated as untrusted data. Comments, object names, and source code must never be allowed to override system policies or authorize engineering changes.
+
+## Requirements
+
+| Requirement | Notes |
+|---|---|
+| Windows 10 or 11 | x64 only |
+| Siemens TIA Portal | V21 with Openness installed |
+| Visual Studio | Visual Studio 2022 recommended |
+| .NET SDK | 8.0 or newer |
+| .NET Framework Developer Pack | 4.8 |
+| TiaMcpServer | `tia-mcp` available on `PATH` or in the .NET global-tools directory |
+| Agent runtime | At least one of Mimo, OpenCode, or Claude Code |
+| Windows group | User must belong to `Siemens TIA Openness` |
+
+TIA Portal V21 uses modular Add-In assemblies. Do not add references to the removed monolithic `Siemens.Engineering.AddIn.dll` or legacy `PublicAPI\V21.AddIn` paths.
+
+## Quick Start
+
+> [!IMPORTANT]
+> The following workflow is intended for local development and testing only.
+
+### 1. Clone the repository
+
+```powershell
+git clone https://github.com/allanmarum/tia-portal-code-agent.git
+cd tia-portal-code-agent
+```
+
+### 2. Install and validate the MCP server
 
 ```powershell
 dotnet tool install -g TiaMcpServer
-tia-mcp doctor  # Validate environment
+tia-mcp doctor
 ```
 
-The MCP server is spawned automatically by OpenCode via stdio transport. No separate process management needed. It exposes:
+### 3. Install at least one agent runtime
 
-- **`execute_read_batch`** — up to 50 read operations per call (browse_project_tree, get_block_content, list_tag_tables, read_hardware_config, read_cross_references, search_equipment_catalog, compile_check, get_project_status)
-- **`preview_write_batch`** / **`apply_write_batch`** — safety-token-based writes
-- **Project lifecycle tools** — open_project, save_project, close_project, archive_project, create_project, save_project_as
-
-## Target Environment
-
-| Property | Value |
-|---|---|
-| TIA Portal version | V21 |
-| .NET Framework | 4.8 |
-| Platform | x64 only |
-| Language | C# |
-| Add-In type | Class library (modular V21 assemblies) |
-| MCP Server | Czarnak/tia-portal-mcp (.NET 8, stdio transport) |
-| Development IDE | Visual Studio 2022 (with V21 Siemens extension) |
-| Packaging | `Siemens.Engineering.AddIn.Publisher.exe` |
-| Installation | User Add-Ins (`%APPDATA%\Siemens\Automation\Portal V21\UserAddIns`) |
-
-**Important:** V21 uses modular assemblies. Do not reference the removed monolithic `Siemens.Engineering.AddIn.dll` or the old `PublicAPI\V21.AddIn` path.
-
-## Use Cases
-
-| ID | Use Case | Description |
-|---|---|---|
-| UC-001 | Explain selected object | Capture selection, retrieve metadata and content, display an explanation |
-| UC-002 | Review selected code | Read object and dependencies, report defects and improvement proposals |
-| UC-003 | Trace references | Find origins, usages, dependencies, and call hierarchies |
-| UC-004 | Explain compilation messages | Interpret compile diagnostics for selected containers or objects |
-| UC-005 | Preview a change | Produce a deterministic change set and diff without applying it |
-| UC-006 | Apply approved change | Verify version, save state, apply scoped change, validate, and record |
-
-## MVP Scope
-
-The MVP is **read-only**. No writes, no PLC downloads, no safety or hardware changes.
-
-### Required Commands
-
-- Get active project summary
-- Capture selected object
-- Read supported block metadata and representation
-- Explain selected object
-- Show agent progress and final response
-- Cancel the task
-- Return structured unsupported-operation errors
-
-### MCP Tools (Read-Only Phase)
-
-Via Czarnak's `execute_read_batch`:
-
-```
-browse_project_tree       read_hardware_config
-get_block_content         read_cross_references
-list_tag_tables           search_equipment_catalog
-compile_check             get_project_status
-```
-
-## Non-Goals
-
-The following are explicitly out of scope for the MVP:
-
-- PLC download
-- Online monitoring or control
-- Equipment start or stop
-- Safety program modification
-- Arbitrary hardware or network topology changes
-- Unattended project-wide refactoring
-- Generic arbitrary Openness execution
-- Cloud exposure of the local MCP endpoint
-
-## Security Model
-
-### Trust Boundaries
-
-```
-TIA Portal process (Add-In)               — trusted local boundary
-TiaAgent.Bridge (port 43119)              — local HTTP, loopback only, bearer token auth
-OpenCode agent runtime (port 43120)       — local HTTP, loopback only
-Czarnak tia-mcp (stdio)                   — child process, no network
-```
-
-### Key Principles
-
-- **Least privilege:** `TIA.ReadOnly` for MVP. Write permissions added only when implemented and reviewed.
-- **Loopback only:** OpenCode HTTP endpoint binds to `127.0.0.1`. MCP uses stdio (no network).
-- **Prompt injection defense:** Project content (comments, names, source text) is treated as untrusted data.
-- **Safety tokens:** Czarnak's preview-then-apply pattern with single-use, expiring tokens bound to exact content.
-
-### Risk Classification
-
-| Class | Operations | Default Policy |
-|---|---|---|
-| R0 | Context and metadata | Allow |
-| R1 | Code and reference reading | Allow + audit |
-| R2 | Export, analysis, preview | Allow + audit |
-| R3 | Compilation and local validation | Ask |
-| R4 | Create, import, modify, rename | Approval token required |
-| R5 | Delete, hardware, networks, safety, download | Deny in MVP |
-
-## Repository Structure
-
-```
-tia-portal-code-agent/
-├── AGENTS.md                      # Agent instruction file
-├── README.md
-├── TiaAgent.sln                   # Solution file
-├── build.ps1                      # Build/test/pack orchestrator
-├── src/
-│   ├── TiaAgent.AddIn/            # TIA Portal Add-In (UI, commands, Bridge client)
-│   ├── TiaAgent.Bridge/           # Local HTTP API, task/session management, OpenCode client
-│   ├── TiaAgent.Contracts/        # DTOs, interfaces, errors, events
-│   ├── TiaAgent.OpenCode/         # OpenCode HTTP client
-│   └── runtime/                   # Runtime Supervisor (PowerShell module)
-│       ├── TiaAgent.Supervisor.psm1
-│       ├── TiaAgent.Supervisor.psd1
-│       ├── Functions/             # PowerShell functions
-│       └── Scripts/               # run.ps1, stop.ps1, status.ps1
-├── tests/
-│   ├── TiaAgent.Application.Tests/
-│   ├── TiaAgent.Contracts.Tests/
-│   ├── TiaAgent.ArchitectureTests/
-│   └── TiaAgent.Runtime.Tests/    # Runtime Supervisor tests
-├── agents/                        # Agent profile definitions
-│   ├── tia-explain.md             # Read-only explanation agent
-│   ├── tia-review.md              # Review agent (reads + compile)
-│   └── tia-change.md              # Change agent (reads + preview + apply)
-├── config/
-│   ├── opencode.json              # OpenCode + MCP server config
-│   ├── opencode.example.json
-│   ├── bridge.example.json        # Bridge configuration example
-│   └── settings.example.json      # Runtime Supervisor settings template
-└── docs/
-    ├── spec/                      # Authoritative specifications
-    │   ├── ARCHITECTURE.md
-    │   ├── ADDIN_TECHNICAL_SPEC.md
-    │   ├── PRODUCT_SPEC.md
-    │   ├── SECURITY_MODEL.md
-    │   └── KNOWN_UNKNOWNS.md
-    └── integration/
-        └── opencode-tia-roundtrip.md
-```
-
-## Getting Started
-
-### Prerequisites
-
-- **Windows 10/11** (64-bit)
-- **Siemens TIA Portal V21** installed with Openness feature
-- **.NET SDK 8.0+** (for building and installing MCP server)
-- **.NET Framework 4.8 Developer Pack**
-- User must be a member of the **Siemens TIA Openness** Windows group
-
-### Install MCP Server
+Ensure one of these commands is available:
 
 ```powershell
-dotnet tool install -g TiaMcpServer
-tia-mcp doctor  # Validate environment
+mimo --version
+opencode --version
+claude --version
 ```
 
-### Build the Add-In
+Refer to the official documentation for the runtime you choose. Runtime-specific configuration is documented in [`docs/RUNTIME.md`](docs/RUNTIME.md).
+
+### 4. Build, test, package, and install the Add-In
 
 ```powershell
-.\build.ps1 all    # Build + Test + Pack
-.\build.ps1 install  # Copy to UserAddIns
+.\build.ps1 all
+.\build.ps1 install
 ```
 
-### Start Runtime Supervisor
+The generated `.addin` package is copied to:
 
-The Runtime Supervisor starts and manages all services:
-
-```powershell
-.\src\runtime\Scripts\run.ps1    # Start all services
-.\src\runtime\Scripts\status.ps1 # Check status
-.\src\runtime\Scripts\stop.ps1   # Stop all services
+```text
+%APPDATA%\Siemens\Automation\Portal V21\UserAddIns\
 ```
 
-See [Runtime Supervisor](#runtime-supervisor) for detailed usage.
+### 5. Configure the default runtime
 
-### Configure OpenCode
-
-The `config/opencode.json` file configures OpenCode to use Czarnak's MCP server via stdio:
+Create or edit `%LOCALAPPDATA%\TiaAgent\config.json`:
 
 ```json
 {
-  "mcp": {
-    "tia-portal": {
-      "type": "local",
-      "command": ["tia-mcp"],
-      "enabled": true
+  "defaultRuntime": "opencode",
+  "runtimes": {
+    "mimo": {
+      "enabled": true,
+      "executable": "mimo"
+    },
+    "opencode": {
+      "enabled": true,
+      "mode": "server",
+      "executable": "opencode",
+      "serverUrl": "http://127.0.0.1:43120"
+    },
+    "claude": {
+      "enabled": true,
+      "executable": "claude"
     }
   }
 }
 ```
 
-### Test the MCP Server
+A temporary override can also be set through PowerShell:
 
 ```powershell
-# Validate environment
-tia-mcp doctor
+$env:TIA_AGENT_RUNTIME = "claude"
+```
 
-# Test with MCP Inspector
-npx -y @modelcontextprotocol/inspector tia-mcp
+### 6. Start the local runtime services
 
-# Call a tool
-npx -y @modelcontextprotocol/inspector --cli tia-mcp --method tools/call --tool-name execute_read_batch --tool-arg operations='[{"operationId":"status","operation":"get_project_status"}]'
+```powershell
+.\src\runtime\Scripts\run.ps1
+```
+
+Useful commands:
+
+```powershell
+# Show current service and runtime status
+.\src\runtime\Scripts\status.ps1
+
+# Return machine-readable status
+.\src\runtime\Scripts\status.ps1 -Json
+
+# Stop local services
+.\src\runtime\Scripts\stop.ps1
+```
+
+Runtime state, service discovery, transient secrets, and logs are stored under:
+
+```text
+%LOCALAPPDATA%\TiaAgent\
+```
+
+### 7. Activate and test the Add-In
+
+1. Open TIA Portal V21.
+2. Open a test project containing a PLC program.
+3. Go to **Options > Settings > Add-Ins**.
+4. Activate **TIA Portal Code Agent** and review the requested permissions.
+5. Right-click a supported PLC object.
+6. Select an action under **AI Assistant**.
+
+Use a disposable test project. Do not begin validation on an operational production project.
+
+For the complete runbook, see [Running End-to-End](docs/RUN.md).
+
+## Repository Structure
+
+```text
+tia-portal-code-agent/
+├── src/
+│   ├── TiaAgent.AddIn/          # TIA Portal integration and contextual UI
+│   ├── TiaAgent.Application/    # Application orchestration and use cases
+│   ├── TiaAgent.Bridge/         # Local API and runtime adapters
+│   ├── TiaAgent.Contracts/      # Shared DTOs, events, errors, and contracts
+│   ├── TiaAgent.OpenCode/       # OpenCode HTTP client
+│   └── runtime/                 # PowerShell Runtime Supervisor
+├── tests/
+│   ├── TiaAgent.Application.Tests/
+│   ├── TiaAgent.ArchitectureTests/
+│   ├── TiaAgent.Bridge.Tests/
+│   ├── TiaAgent.Contracts.Tests/
+│   └── TiaAgent.Runtime.Tests/
+├── agents/                      # Agent profiles and behavior rules
+├── config/                      # Example runtime and Bridge configuration
+├── docs/
+│   ├── spec/                    # Architecture and product specifications
+│   ├── RUN.md                   # End-to-end local runbook
+│   └── RUNTIME.md               # Multi-runtime configuration
+├── build.ps1                    # Build, test, package, and install entry point
+├── AGENTS.md                    # Instructions for coding agents
+└── TiaAgent.sln
 ```
 
 ## Development
 
-### Solution Layout
-
-The solution contains 4 source projects and 3 test projects (14 architecture tests). MCP and Openness access are delegated to Czarnak's `TiaMcpServer` — this repo contains only the Add-In, Bridge, and OpenCode client.
-
-### Key Rules
-
-- **No engineering objects in fields.** Re-resolve `IEngineeringObject` on every operation.
-- **All operations accept `CancellationToken`.** Propagate cancellation and timeout. Never block the TIA UI thread.
-- **All errors are structured.** Use the error codes defined in `ARCHITECTURE.md` §17.
-- **Every task carries a `correlationId`.** All logs for one operation share the same ID.
-- **MCP and Openness are external.** Do not duplicate TIA access — use Czarnak's server.
-
-### Agent Profiles
-
-Agent profiles in `agents/` define the behavior for each command. They use Czarnak's batch API:
-
-| Profile | File | Allowed Tools |
-|---|---|---|
-| tia-explain | `agents/tia-explain.md` | `execute_read_batch`, `get_project_status` |
-| tia-review | `agents/tia-review.md` | `execute_read_batch`, `get_project_status` |
-| tia-change | `agents/tia-change.md` | `execute_read_batch`, `get_project_status`, `preview_write_batch`, `apply_write_batch` |
-
-## Testing
-
-### Test Categories
-
-| Category | Scope | TIA Required |
-|---|---|---|
-| Unit | DTO serialization, error codes, orchestrator logic | No |
-| Architecture | Dependency boundaries, no Siemens refs in wrong projects | No |
-| MCP Integration | Use `tia-mcp doctor` and MCP Inspector | Yes |
-
-### Running Tests
+### Common commands
 
 ```powershell
-dotnet test TiaAgent.sln
-```
+# Compile the solution
+.\build.ps1 build
 
-## Packaging and Installation
+# Run the test suite
+.\build.ps1 test
 
-### Publisher
-
-Packaging uses the V21 `Siemens.Engineering.AddIn.Publisher.exe`:
-
-```powershell
+# Build the .addin package
 .\build.ps1 pack
+
+# Complete local validation pipeline
+.\build.ps1 all
 ```
 
-**Never use `--skipEngMemberCheck` in CI or release builds.**
-
-### Installation
-
-1. Build the `.addin` package: `.\build.ps1 pack`
-2. Install: `.\build.ps1 install`
-3. Open TIA Portal V21 → Add-Ins task card → review permissions → activate.
-4. Right-click a PLC block → AI Assistant → Explain/Review/Propose.
-
-## Runtime Supervisor
-
-The Runtime Supervisor provides a single command to start, monitor, and stop all services.
-
-### Quick Start
+Direct .NET commands are also supported:
 
 ```powershell
-# Start all services (Bridge + OpenCode)
-.\src\runtime\Scripts\run.ps1
-
-# Check status
-.\src\runtime\Scripts\status.ps1
-
-# Stop all services
-.\src\runtime\Scripts\stop.ps1
+dotnet build TiaAgent.sln --configuration Release
+dotnet test TiaAgent.sln --configuration Release
 ```
 
-### Available Commands
+### Engineering rules
 
-| Command | Description |
-|---------|-------------|
-| `run.ps1` | Start and monitor all services |
-| `stop.ps1` | Gracefully stop all services |
-| `status.ps1` | Show runtime status and health |
+- Never block the TIA Portal UI thread with network, model, or long-running engineering operations.
+- Propagate cancellation and timeouts across process and HTTP boundaries.
+- Keep Siemens engineering types out of shared contracts.
+- Use structured error codes and correlation IDs.
+- Bind local HTTP services to loopback only.
+- Do not log credentials, tokens, or unnecessary project source.
+- Do not implement project writes that bypass preview, concurrency checks, explicit approval, validation, and audit logging.
+- Treat specifications in `docs/spec/` as authoritative architectural guidance.
 
-### Options
+## Documentation
 
-```powershell
-# Start with verbose logging
-.\src\runtime\Scripts\run.ps1 -Verbose
+| Document | Purpose |
+|---|---|
+| [`docs/RUN.md`](docs/RUN.md) | Complete local setup and end-to-end execution guide |
+| [`docs/RUNTIME.md`](docs/RUNTIME.md) | Runtime selection, adapters, configuration, and troubleshooting |
+| [`docs/spec/ARCHITECTURE.md`](docs/spec/ARCHITECTURE.md) | System architecture and component boundaries |
+| [`docs/spec/PRODUCT_SPEC.md`](docs/spec/PRODUCT_SPEC.md) | Product scope, use cases, and requirements |
+| [`docs/spec/SECURITY_MODEL.md`](docs/spec/SECURITY_MODEL.md) | Trust boundaries, permissions, and risk controls |
+| [`docs/spec/KNOWN_UNKNOWNS.md`](docs/spec/KNOWN_UNKNOWNS.md) | Open technical questions and required evidence |
+| [`AGENTS.md`](AGENTS.md) | Repository instructions for coding agents |
 
-# Start and exit (no monitoring)
-.\src\runtime\Scripts\run.ps1 -NoMonitor
+## Roadmap
 
-# JSON status output
-.\src\runtime\Scripts\status.ps1 -Json
+Near-term priorities include:
 
-# Force stop (skip graceful shutdown)
-.\src\runtime\Scripts\stop.ps1 -Force
-```
+- Stabilize the read-only TIA Portal → Bridge → runtime → MCP → TIA Portal round trip.
+- Validate supported object types across TIA Portal V21 projects.
+- Improve diagnostics, cancellation, recovery, and runtime health reporting.
+- Add a clear runtime-selection experience for users.
+- Expand automated integration and packaging tests.
+- Design auditable preview and approval flows before enabling project writes.
+- Define compatibility, signing, installation, and upgrade policies.
 
-### Runtime Directory
-
-All runtime data is stored in `%LOCALAPPDATA%\TiaAgent\`:
-
-```
-%LOCALAPPDATA%\TiaAgent\
-├── config\settings.json    # Supervisor configuration
-├── runtime\runtime.json    # Service discovery manifest
-├── runtime\secrets\        # Transient credentials
-├── logs\                   # Service logs
-└── scripts\                # Runtime scripts
-```
-
-### Service Discovery
-
-The Add-In discovers services via `runtime.json`:
-- Reads the manifest from `%LOCALAPPDATA%\TiaAgent\runtime\runtime.json`
-- Validates the schema version and status
-- Calls the service's health endpoint before use
-
-**Important:** `runtime.json` is discovery metadata, not proof of service health. Always validate the health endpoint.
-
-## Known Unknowns
-
-Open questions that must be resolved with evidence before implementation:
-
-| ID | Question | Status |
-|---|---|---|
-| KU-001 | Exact supported TIA Portal V21 build and PublicAPI layout | Partially answered |
-| KU-002 | Which Siemens object types support block-level context commands | Open |
-| KU-003 | Whether block source can be read directly or requires export | Open |
-| KU-004 | Reference/symbol-usage API availability for required object types | Open |
-| KU-005 | TIA API threading model | Partially answered |
-| KU-006 | Preferred Add-In UI model | Partially answered |
-| KU-007 | OpenCode server API version/schema | Resolved — uses HTTP API at port 43120 |
-| KU-008 | MCP transport in Add-In process | Resolved — Czarnak's tia-mcp uses stdio, separate process |
-| KU-009 | Whether installation requires admin privileges | Open |
-| KU-010 | Digital signing requirements | Open |
-| KU-011 | Compilation side effects | Open |
-| KU-012 | Write recovery | Open |
-
-See `docs/spec/KNOWN_UNKNOWNS.md` for evidence requirements and resolution process.
+Production readiness will require explicit release criteria, broader compatibility testing, security review, operational documentation, and controlled validation in representative industrial environments.
 
 ## Contributing
 
-See `AGENTS.md` for agent-specific guidance. The specs in `docs/spec/` are the source of truth — if code conflicts with specs, the spec wins until a decision updates it.
+This project is evolving quickly. Before making changes:
 
-### Before Editing
+1. Read [`AGENTS.md`](AGENTS.md) and the relevant files in `docs/spec/`.
+2. Confirm the current implementation phase and supported scope.
+3. Keep changes focused and preserve architectural boundaries.
+4. Run the relevant build and tests.
+5. Document assumptions, limitations, and any newly discovered compatibility constraints.
 
-1. Read the relevant spec file.
-2. Identify the current implementation phase.
-3. Locate the responsible layer.
-4. Check which invariants are affected.
+Bug reports and pull requests should include the TIA Portal version, relevant runtime, reproducible steps, expected behavior, actual behavior, and sanitized logs where available.
 
-### Before Completing
+## Disclaimer
 
-1. Build passes (`dotnet build TiaAgent.sln`).
-2. Relevant tests pass (`dotnet test TiaAgent.sln`).
-3. No dependency cycles introduced.
-4. No direct Openness access — use Czarnak's MCP server.
-5. No write bypasses approval.
-6. No secrets in code or logs.
+This is an independent experimental project and is not affiliated with, endorsed by, or supported by Siemens, Anthropic, Mimo, OpenCode, or the maintainers of `tia-mcp`.
+
+Siemens, SIMATIC, TIA Portal, and related product names are trademarks of their respective owners.
 
 ## License
 
-[Add license here]
+No project license has been published yet. Do not assume permission for production use, redistribution, or commercial deployment until a license is added.
