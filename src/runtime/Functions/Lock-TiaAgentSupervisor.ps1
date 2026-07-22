@@ -32,7 +32,19 @@ function Lock-TiaAgentSupervisor {
                 $existingPid = $lock.supervisorPid
                 $existingProcess = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
                 if ($existingProcess) {
-                    throw "Another TIA Agent supervisor is already running (PID: $existingPid)"
+                    $isSupervisorProcess = ($existingProcess.ProcessName -like '*powershell*' -or $existingProcess.ProcessName -like '*pwsh*' -or $existingProcess.ProcessName -like '*TiaAgent*')
+                    if ($isSupervisorProcess) {
+                        throw "Another TIA Agent supervisor is already running (PID: $existingPid)"
+                    }
+                    else {
+                        Write-TiaAgentLog -Level 'WARN' -Event 'stale_lock_pid_reused' -Message "PID $existingPid is in use by non-supervisor process '$($existingProcess.ProcessName)'. Cleaning stale lock."
+                        Remove-Item -Path $lockPath -Force -ErrorAction SilentlyContinue
+                        $mutex.Dispose()
+                        $mutex = [System.Threading.Mutex]::new($false, $mutexName, [ref]$createdNew)
+                        if (-not $createdNew) {
+                            throw "Cannot acquire supervisor mutex after PID reuse cleanup"
+                        }
+                    }
                 }
                 else {
                     Write-TiaAgentLog -Level 'WARN' -Event 'stale_lock_detected' -Message "Stale lock detected for PID $existingPid. Cleaning up."
