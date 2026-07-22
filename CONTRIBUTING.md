@@ -78,7 +78,7 @@ Serial roadmap gate
 Build and test
 ```
 
-Once `Build and test` exists on `main`, maintainers must add its stable job name to the ruleset without removing `Serial roadmap gate`.
+After this pull request merges, maintainers must add `Build and test` as a required check in the repository ruleset without removing `Serial roadmap gate`.
 
 Do not make optional, release-only, matrix-child, or environment-specific checks mandatory.
 

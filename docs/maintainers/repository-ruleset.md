@@ -35,7 +35,7 @@ Current required checks:
 - `Serial roadmap gate`
 - `Build and test`
 
-When REL-008 introduces the consolidated implementation CI job (`Build and test`), add that job as the second required check without removing the serial gate. Do not require transient matrix children, optional checks, release jobs, or external checks that are not guaranteed to run on every pull request targeting `main`.
+This pull request introduces the consolidated implementation CI job (`Build and test`). After it merges, add that job as the second required check without removing the serial gate. Do not require transient matrix children, optional checks, release jobs, or external checks that are not guaranteed to run on every pull request targeting `main`.
 
 Expected required-check set:
 
