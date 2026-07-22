@@ -3,6 +3,7 @@
 
 # Repository governance and automation require maintainer review.
 /.github/ @allanmarum
+/SECURITY.md @allanmarum
 /CONTRIBUTING.md @allanmarum
 /AGENTS.md @allanmarum
 /scripts/ci/ @allanmarum

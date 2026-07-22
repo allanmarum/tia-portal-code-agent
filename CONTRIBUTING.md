@@ -122,6 +122,12 @@ To validate a real transition locally, provide the base and head roadmap files p
 
 The consolidated `.github/workflows/ci.yml` workflow runs the same validation for every PR targeting `main`.
 
+## Security policy and reporting
+
+Please do not open public GitHub issues for security vulnerabilities. Follow the security policy documented in [`SECURITY.md`](SECURITY.md) and report vulnerabilities privately via GitHub Security Advisories or maintainer contact.
+
+Authoritative security and safety architecture details are specified in [`docs/spec/SECURITY_MODEL.md`](docs/spec/SECURITY_MODEL.md).
+
 ## General checks
 
 Run the relevant repository checks before requesting review:
@@ -132,3 +138,4 @@ dotnet test TiaAgent.sln
 ```
 
 Later roadmap issues may refine these commands. Follow the repository documentation and the active issue scope.
+

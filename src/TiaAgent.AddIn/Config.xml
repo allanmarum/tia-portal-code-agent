@@ -25,12 +25,7 @@
 
   <RequiredPermissions>
     <TIAPermissions>
-      <TIA.ReadWrite/>
+      <TIA.ReadOnly/>
     </TIAPermissions>
-    <UnrestrictedPermissions>
-      <System.UnrestrictedAccess>
-        <JustificationComment>Needed for file I/O, logging, and network access for MCP communication</JustificationComment>
-      </System.UnrestrictedAccess>
-    </UnrestrictedPermissions>
   </RequiredPermissions>
 </PackageConfiguration>
