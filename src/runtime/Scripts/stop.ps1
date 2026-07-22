@@ -106,9 +106,27 @@ if (-not $opencodeStopped) {
         'mimo'     { @('mimo', 'node') }
         default    { @($runtimeId) }
     }
-    $runtimeProcesses = Get-Process -Name $runtimeProcessNames -ErrorAction SilentlyContinue | Where-Object {
-        $_.CommandLine -like "*serve*--port*$($manifest.services.opencode.port)*"
+    $runtimeProcesses = @()
+    try {
+        $wmiProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
+        if ($wmiProcesses) {
+            $matchingPids = $wmiProcesses | Where-Object {
+                $runtimeProcessNames -contains $_.Name -or $runtimeProcessNames -contains [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
+            } | Where-Object {
+                $_.CommandLine -like "*serve*--port*$($manifest.services.opencode.port)*" -or $_.CommandLine -like "*TiaAgent*"
+            } | Select-Object -ExpandProperty ProcessId
+
+            foreach ($mpid in $matchingPids) {
+                $p = Get-Process -Id $mpid -ErrorAction SilentlyContinue
+                if ($p) { $runtimeProcesses += $p }
+            }
+        }
+    } catch { }
+
+    if ($runtimeProcesses.Count -eq 0) {
+        $runtimeProcesses = Get-Process -Name $runtimeProcessNames -ErrorAction SilentlyContinue
     }
+
     foreach ($proc in $runtimeProcesses) {
         if ($Force) {
             $proc.Kill()

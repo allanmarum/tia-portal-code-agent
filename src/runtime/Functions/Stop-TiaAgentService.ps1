@@ -32,9 +32,16 @@ function Stop-TiaAgentService {
         return
     }
 
-    # Validate process identity
+    # Validate process identity (PID and start time/identity matching)
     try {
         $currentProcess = Get-Process -Id $pid -ErrorAction Stop
+        
+        # Verify process has not been reused by OS for an unrelated process
+        if ($Process.StartTime -and $currentProcess.StartTime -and $Process.StartTime -ne $currentProcess.StartTime) {
+            Write-TiaAgentLog -Level 'WARN' -Service $ServiceName -InstanceId $RuntimeInstanceId -Event 'process_pid_reused' -Message "PID $pid was reused by process '$($currentProcess.ProcessName)' (started $($currentProcess.StartTime)). Skipping stop."
+            return
+        }
+
         Write-TiaAgentLog -Level 'INFO' -Service $ServiceName -InstanceId $RuntimeInstanceId -Event 'process_stop_requested' -Message "Requesting graceful shutdown of $ServiceName (PID: $pid, name: $($currentProcess.ProcessName))"
     }
     catch {
