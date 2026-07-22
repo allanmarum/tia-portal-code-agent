@@ -12,7 +12,8 @@
     <FileVersion Condition="'$(FileVersion)' == ''">0.0.0.0</FileVersion>
     <SourceRevisionId Condition="'$(SourceRevisionId)' == '' and '$(GITHUB_SHA)' != ''">$(GITHUB_SHA)</SourceRevisionId>
     <SourceRevisionId Condition="'$(SourceRevisionId)' == ''">unknown</SourceRevisionId>
-    <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(Version)+$(SourceRevisionId)</InformationalVersion>
+    <!-- Source Link appends SourceRevisionId automatically; do not duplicate it here. -->
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(Version)</InformationalVersion>
     <RepositoryCommit>$(SourceRevisionId)</RepositoryCommit>
 
     <LangVersion>latest</LangVersion>

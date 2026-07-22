@@ -130,12 +130,18 @@ function Invoke-Test {
     Write-Ok "All tests passed"
 }
 
+function Get-PublisherVersion {
+    # Siemens Publisher requires numeric-only versions (X.Y.Z); strip prerelease suffixes.
+    return $ProductVersion -replace '-.*', ''
+}
+
 function New-VersionedAddInConfig {
     param([string]$Destination)
     $template = "$Root\src\TiaAgent.AddIn\Config.xml"
     $content = [IO.File]::ReadAllText($template)
     if (-not $content.Contains("__PRODUCT_VERSION__")) { throw "Config.xml does not contain __PRODUCT_VERSION__." }
-    $content = $content.Replace("__PRODUCT_VERSION__", $ProductVersion)
+    $publisherVersion = Get-PublisherVersion
+    $content = $content.Replace("__PRODUCT_VERSION__", $publisherVersion)
     [IO.File]::WriteAllText($Destination, $content, (New-Object Text.UTF8Encoding($false)))
 }
 
@@ -149,7 +155,7 @@ function Invoke-Pack {
     Add-Type -AssemblyName WindowsBase
     $packDir = "$Root\artifacts"
     $addinFile = Get-AddInFile
-    $temporaryAddinFile = "$addinFile.$([Guid]::NewGuid().ToString('N')).tmp"
+    $temporaryAddinFile = "$addinFile.$([Guid]::NewGuid().ToString('N')).addin"
     $addinBin = "$Root\src\TiaAgent.AddIn\bin\$Config\net48"
     $generatedConfig = "$addinBin\Config.xml"
     $publisher = "C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe"

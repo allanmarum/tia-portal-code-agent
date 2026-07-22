@@ -6,7 +6,9 @@
        ================================================================ -->
 
   <PropertyGroup>
-    <AddInVersion>$(Version)</AddInVersion>
+    <!-- Siemens Publisher requires numeric-only versions (X.Y.Z); strip prerelease suffixes. -->
+    <PublisherVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '-.*$', ''))</PublisherVersion>
+    <AddInVersion>$(PublisherVersion)</AddInVersion>
     <AddInConfigPath>$(MSBuildThisFileDirectory)Config.xml</AddInConfigPath>
     <AddInDeployDir>$(APPDATA)\Siemens\Automation\Portal V21\UserAddIns</AddInDeployDir>
     <TiaPublisherPath>$(ProgramFiles)\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe</TiaPublisherPath>
@@ -24,11 +26,16 @@
 
     <Message Importance="high" Text="=== Packaging TIA Portal Add-In ===" Condition="Exists('$(_AddInDllPath)') AND Exists('$(TiaPublisherPath)')" />
 
-    <!-- Copy Config.xml to output directory (Publisher expects it there) -->
-    <Copy SourceFiles="$(AddInConfigPath)"
-          DestinationFolder="$(TargetDir)"
-          SkipUnchangedFiles="true"
-          Condition="Exists('$(_AddInDllPath)') AND Exists('$(TiaPublisherPath)')" />
+    <!-- Expand Config.xml template with the resolved product version -->
+    <ReadLinesFromFile File="$(AddInConfigPath)">
+      <Output TaskParameter="Lines" ItemName="_ConfigLines" />
+    </ReadLinesFromFile>
+    <WriteLinesToFile
+      File="$(TargetDir)Config.xml"
+      Lines="@(_ConfigLines->Replace('__PRODUCT_VERSION__', '$(PublisherVersion)'))"
+      Overwrite="true"
+      Encoding="UTF-8"
+      Condition="Exists('$(_AddInDllPath)') AND Exists('$(TiaPublisherPath)')" />
 
     <!-- Run Publisher: creates .addin from Config.xml + build output -->
     <Exec

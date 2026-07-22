@@ -23,8 +23,7 @@ public sealed class ProductVersionConsistencyTests
         versions[0].Attribute("Condition")?.Value.Should().Contain("$(Version)");
         document.Descendants("PackageVersion").Single().Value.Should().Be("$(Version)");
         document.Descendants("ProductVersion").Single().Value.Should().Be("$(Version)");
-        document.Descendants("InformationalVersion").Single().Value
-            .Should().Contain("$(Version)").And.Contain("$(SourceRevisionId)");
+        document.Descendants("InformationalVersion").Single().Value.Should().Contain("$(Version)");
     }
 
     [Fact]
@@ -50,13 +49,20 @@ public sealed class ProductVersionConsistencyTests
         var root = FindRepositoryRoot();
         var config = File.ReadAllText(Path.Combine(root, "src", "TiaAgent.AddIn", "Config.xml"));
         var buildScript = File.ReadAllText(Path.Combine(root, "build.ps1"));
+        var targets = File.ReadAllText(Path.Combine(root, "src", "TiaAgent.AddIn", "PackageAddIn.targets"));
 
         config.Should().Contain("<Version>__PRODUCT_VERSION__</Version>");
         ProductVersionLiteral.IsMatch(config).Should().BeFalse();
         buildScript.Should().Contain("/p:Version=$ProductVersion");
-        buildScript.Should().Contain(".Replace(\"__PRODUCT_VERSION__\", $ProductVersion)");
+        buildScript.Should().Contain(".Replace(\"__PRODUCT_VERSION__\", $publisherVersion)");
         buildScript.Should().Contain("0.0.0-dev");
         buildScript.Should().NotContain("0.1.0");
+
+        // Siemens Publisher requires numeric-only versions; both build.ps1 and the MSBuild target
+        // must strip the prerelease suffix before substituting the Config.xml template.
+        buildScript.Should().Contain("Get-PublisherVersion");
+        targets.Should().Contain("PublisherVersion");
+        targets.Should().Contain("Replace('__PRODUCT_VERSION__', '$(PublisherVersion)')");
     }
 
     private static string FindRepositoryRoot()
