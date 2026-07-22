@@ -4,6 +4,10 @@
        PackageAddIn: Explicit MSBuild targets for Add-In packaging,
        verification, and installation. No side effects on Build.
 
+       REL-005: Packaging is deterministic and atomic. The final .addin
+       artifact appears only after inline verification passes. Partial
+       or failed packages never use the final filename.
+
        Usage:
          dotnet msbuild -t:PackAddIn
          dotnet msbuild -t:VerifyAddIn
@@ -21,25 +25,46 @@
     <TiaPublisherPath>$(ProgramFiles)\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe</TiaPublisherPath>
     <OpcSignerPath>$(MSBuildThisFileDirectory)..\..\tools\OpcSigner\bin\Release\net48\OpcSigner.exe</OpcSignerPath>
     <AddInPackagePath>$(AddInArtifactsDir)TiaAgent-$(PublisherVersion).addin</AddInPackagePath>
+    <AddInTempPackagePath>$(AddInArtifactsDir)TiaAgent-$(PublisherVersion).addin.tmp</AddInTempPackagePath>
+    <ThirdPartyNoticesSource>$(MSBuildThisFileDirectory)..\..\THIRD_PARTY_NOTICES.md</ThirdPartyNoticesSource>
   </PropertyGroup>
 
   <!-- ============================================================
-       PackAddIn: Expand Config.xml, run Publisher, sign package.
+       PackAddIn: Deterministic, atomic packaging.
+
+       Flow:
+         1. Validate all required inputs (fail fast with clear errors)
+         2. Expand Config.xml template with resolved product version
+         3. Run Siemens Publisher to create the raw .addin
+         4. Sign the package with OpcSigner (optional)
+         5. Write to a temp file (never the final filename)
+         6. Verify the temp .addin as an OPC package (inline)
+         7. Copy third-party notices to artifacts/
+         8. Atomic rename temp → final (only after verification passes)
+
        Requires: successful build of TiaAgent.AddIn first.
        ============================================================ -->
   <Target Name="PackAddIn">
 
     <PropertyGroup>
       <_AddInDllPath>$(AddInBuildDir)TiaAgent.AddIn.dll</_AddInDllPath>
+      <_ContractsDllPath>$(AddInBuildDir)TiaAgent.Contracts.dll</_ContractsDllPath>
       <_PublisherAddInPath>$(AddInBuildDir)TiaAgent.AddIn.addin</_PublisherAddInPath>
     </PropertyGroup>
 
+    <!-- ── Input validation (fail fast, clear messages) ── -->
     <Error Condition="!Exists('$(_AddInDllPath)')"
            Text="TiaAgent.AddIn.dll not found at $(_AddInDllPath). Run 'dotnet build' first." />
+    <Error Condition="!Exists('$(AddInConfigPath)')"
+           Text="Config.xml template not found at $(AddInConfigPath)." />
+    <Error Condition="!Exists('$(TiaPublisherPath)')"
+           Text="Siemens Publisher not found at $(TiaPublisherPath). Install TIA Portal V21." />
+    <Error Condition="!Exists('$(_ContractsDllPath)')"
+           Text="TiaAgent.Contracts.dll not found at $(_ContractsDllPath). Required by Config.xml AdditionalAssemblies." />
 
-    <Message Importance="high" Text="=== Packaging TIA Portal Add-In ===" />
+    <Message Importance="high" Text="=== Packaging TIA Portal Add-In (deterministic, atomic) ===" />
 
-    <!-- Expand Config.xml template with the resolved product version -->
+    <!-- ── Expand Config.xml template with the resolved product version ── -->
     <ReadLinesFromFile File="$(AddInConfigPath)">
       <Output TaskParameter="Lines" ItemName="_ConfigLines" />
     </ReadLinesFromFile>
@@ -49,14 +74,12 @@
       Overwrite="true"
       Encoding="UTF-8" />
 
-    <!-- Run Publisher: creates .addin from Config.xml + build output (with retry for file locks) -->
-    <Error Condition="!Exists('$(TiaPublisherPath)')"
-           Text="Siemens Publisher not found at $(TiaPublisherPath). Install TIA Portal V21." />
+    <!-- ── Run Publisher: creates .addin from Config.xml + build output ── -->
     <Exec
-      Command="powershell -NoProfile -Command &quot; for ($attempt = 1; $attempt -le 12; $attempt++) { try { &amp; '$(TiaPublisherPath)' -f '$(AddInBuildDir)Config.xml' -c -v -l '$(AddInBuildDir)publish.log'; if ($LASTEXITCODE -ne 0) { throw 'Publisher failed' }; break } catch { if ($attempt -eq 12) { throw }; Write-Host &quot;Publisher locked; retrying ($attempt/12)...&quot;; Start-Sleep -Milliseconds 500 } } &quot;"
+      Command="powershell -NoProfile -Command &quot; for ($attempt = 1; $attempt -le 12; $attempt++) { try { &amp; '$(TiaPublisherPath)' -f '$(AddInBuildDir)Config.xml' -c -v -l '$(AddInBuildDir)publish.log'; if ($LASTEXITCODE -ne 0) { throw 'Publisher failed with exit code ' + $LASTEXITCODE }; break } catch { if ($attempt -eq 12) { throw }; Write-Host &quot;Publisher locked; retrying ($attempt/12)...&quot;; Start-Sleep -Milliseconds 500 } } &quot;"
       ConsoleToMSBuild="true" />
 
-    <!-- Sign the .addin package with OpcSigner -->
+    <!-- ── Sign the .addin package with OpcSigner ── -->
     <Exec
       Command="&quot;$(OpcSignerPath)&quot; &quot;$(_PublisherAddInPath)&quot;"
       Condition="Exists('$(_PublisherAddInPath)') AND Exists('$(OpcSignerPath)')"
@@ -64,22 +87,46 @@
     <Warning Text="OpcSigner not found at $(OpcSignerPath). Package remains unsigned."
              Condition="Exists('$(_PublisherAddInPath)') AND !Exists('$(OpcSignerPath)')" />
 
-    <!-- Deliver versioned .addin to artifacts/ -->
+    <!-- ── Write to temp file (never the final filename) ── -->
     <MakeDir Directories="$(AddInArtifactsDir)" Condition="!Exists('$(AddInArtifactsDir)')" />
     <Copy SourceFiles="$(_PublisherAddInPath)"
-          DestinationFiles="$(AddInPackagePath)"
+          DestinationFiles="$(AddInTempPackagePath)"
           SkipUnchangedFiles="true"
           Retries="12"
           RetryDelayMilliseconds="500"
           Condition="Exists('$(_PublisherAddInPath)')" />
 
+    <Error Condition="!Exists('$(AddInTempPackagePath)')"
+           Text="Publisher did not produce expected output at $(_PublisherAddInPath). Check $(AddInBuildDir)publish.log for details." />
+
+    <!-- ── Verify temp .addin as OPC package (inline, before final artifact) ── -->
+    <Message Importance="high" Text="--- Verifying package contents ---" />
+    <Exec
+      Command="powershell -NoProfile -Command &quot;Add-Type -AssemblyName WindowsBase; $pkg = [IO.Packaging.Package]::Open('$(AddInTempPackagePath)', [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read); try { $parts = @($pkg.GetParts() | ForEach-Object { $_.Uri.ToString() }); $required = @('TIAAGENT\.ADDIN', '^/EngineeringVersion$', '/Meta/', '/Permissions/'); $missing = @(); foreach ($r in $required) { if (-not ($parts -match $r)) { $missing += $r } }; if ($missing.Count -gt 0) { Write-Error ('Missing required OPC parts: ' + ($missing -join ', ')); exit 1 }; $configXml = [xml](Get-Content '$(AddInBuildDir)Config.xml'); $expectedVersion = '$(PublisherVersion)'; $packageVersion = $configXml.PackageConfiguration.Product.Version; if ($packageVersion -ne $expectedVersion) { Write-Error ('Product version mismatch: package has ' + $packageVersion + ', expected ' + $expectedVersion); exit 1 }; $requiredAssemblies = @('TiaAgent.AddIn.dll', 'TiaAgent.Contracts.dll'); $missingAssemblies = @(); foreach ($a in $requiredAssemblies) { $found = $false; foreach ($p in $parts) { if ($p -match ('(?i)' + [regex]::Escape($a))) { $found = $true; break } }; if (-not $found) { $missingAssemblies += $a } }; if ($missingAssemblies.Count -gt 0) { Write-Error ('Missing required assemblies in package: ' + ($missingAssemblies -join ', ')); exit 1 }; Write-Host 'Package verification passed.' } finally { $pkg.Close(); $pkg.Dispose() }&quot;"
+      ConsoleToMSBuild="true" />
+
+    <!-- ── Copy third-party notices to artifacts/ ── -->
+    <Copy SourceFiles="$(ThirdPartyNoticesSource)"
+          DestinationFolder="$(AddInArtifactsDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(ThirdPartyNoticesSource)')" />
+
+    <!-- ── Atomic finalize: temp → final (only after verification passes) ── -->
+    <Message Importance="high" Text="--- Finalizing package ---" />
+    <Exec
+      Command="powershell -NoProfile -Command &quot; if (Test-Path '$(AddInPackagePath)') { Remove-Item '$(AddInPackagePath)' -Force }; Move-Item '$(AddInTempPackagePath)' '$(AddInPackagePath)' -Force; if (-not (Test-Path '$(AddInPackagePath)')) { throw 'Atomic rename failed: final artifact not created' } &quot;"
+      ConsoleToMSBuild="true" />
+
     <Message Importance="high" Text="=== Add-In package ready: $(AddInPackagePath) ==="
              Condition="Exists('$(AddInPackagePath)')" />
+    <Warning Text="Package was not created. Check build output for errors."
+             Condition="!Exists('$(AddInPackagePath)')" />
   </Target>
 
   <!-- ============================================================
-       VerifyAddIn: Validate the .addin OPC package contents.
-       Requires: PackAddIn has been run.
+       VerifyAddIn: Validate an existing .addin OPC package.
+       Use this to verify a previously built package, or as a
+       post-packaging sanity check (PackAddIn verifies inline).
        ============================================================ -->
   <Target Name="VerifyAddIn">
 
@@ -88,9 +135,11 @@
 
     <Message Importance="high" Text="=== Verifying Add-In package ===" />
 
-    <!-- Inspect OPC package parts via PowerShell -->
+    <!-- Inspect OPC package parts and assemblies via PowerShell.
+         Note: Product version validation is done inline by PackAddIn (which has access to
+         Config.xml). VerifyAddIn focuses on structural validation of the OPC package. -->
     <Exec
-      Command="powershell -NoProfile -Command &quot;Add-Type -AssemblyName WindowsBase; $pkg = [IO.Packaging.Package]::Open('$(AddInPackagePath)', [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read); try { $parts = @($pkg.GetParts() | ForEach-Object { $_.Uri.ToString() }); $required = @('TIAAGENT\.ADDIN', '^/EngineeringVersion$', '/Meta/', '/Permissions/'); $missing = @(); foreach ($r in $required) { if (-not ($parts -match $r)) { $missing += $r } }; if ($missing.Count -gt 0) { Write-Error ('Missing required parts: ' + ($missing -join ', ')); exit 1 }; Write-Host 'Package verification passed.' } finally { $pkg.Close(); $pkg.Dispose() }&quot;"
+      Command="powershell -NoProfile -Command &quot;Add-Type -AssemblyName WindowsBase; $pkg = [IO.Packaging.Package]::Open('$(AddInPackagePath)', [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read); try { $parts = @($pkg.GetParts() | ForEach-Object { $_.Uri.ToString() }); $required = @('TIAAGENT\.ADDIN', '^/EngineeringVersion$', '/Meta/', '/Permissions/'); $missing = @(); foreach ($r in $required) { if (-not ($parts -match $r)) { $missing += $r } }; if ($missing.Count -gt 0) { Write-Error ('Missing required OPC parts: ' + ($missing -join ', ')); exit 1 }; $requiredAssemblies = @('TiaAgent.AddIn.dll', 'TiaAgent.Contracts.dll'); $missingAssemblies = @(); foreach ($a in $requiredAssemblies) { $found = $false; foreach ($p in $parts) { if ($p -match ('(?i)' + [regex]::Escape($a))) { $found = $true; break } }; if (-not $found) { $missingAssemblies += $a } }; if ($missingAssemblies.Count -gt 0) { Write-Error ('Missing required assemblies in package: ' + ($missingAssemblies -join ', ')); exit 1 }; Write-Host 'Package verification passed.' } finally { $pkg.Close(); $pkg.Dispose() }&quot;"
       ConsoleToMSBuild="true" />
 
     <Message Importance="high" Text="=== Package verification passed ===" />
@@ -98,6 +147,7 @@
 
   <!-- ============================================================
        InstallAddIn: Deploy the .addin to TIA Portal UserAddIns.
+       This is the ONLY target that touches %APPDATA%.
        Requires: PackAddIn has been run.
        ============================================================ -->
   <Target Name="InstallAddIn">

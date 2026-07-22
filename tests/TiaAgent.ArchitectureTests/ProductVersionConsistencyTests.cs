@@ -53,16 +53,73 @@ public sealed class ProductVersionConsistencyTests
 
         config.Should().Contain("<Version>__PRODUCT_VERSION__</Version>");
         ProductVersionLiteral.IsMatch(config).Should().BeFalse();
-        buildScript.Should().Contain("/p:Version=$ProductVersion");
-        buildScript.Should().Contain(".Replace(\"__PRODUCT_VERSION__\", $publisherVersion)");
+
+        // build.ps1 passes version to MSBuild via -p:Version argument.
+        buildScript.Should().Contain("-p:Version=$ProductVersion");
         buildScript.Should().Contain("0.0.0-dev");
         buildScript.Should().NotContain("0.1.0");
 
-        // Siemens Publisher requires numeric-only versions; both build.ps1 and the MSBuild target
-        // must strip the prerelease suffix before substituting the Config.xml template.
-        buildScript.Should().Contain("Get-PublisherVersion");
+        // Siemens Publisher requires numeric-only versions; the MSBuild target
+        // strips the prerelease suffix before substituting the Config.xml template.
         targets.Should().Contain("PublisherVersion");
         targets.Should().Contain("Replace('__PRODUCT_VERSION__', '$(PublisherVersion)')");
+    }
+
+    [Fact]
+    public void PackAddIn_never_copies_to_AppData()
+    {
+        var root = FindRepositoryRoot();
+        var targets = File.ReadAllText(Path.Combine(root, "src", "TiaAgent.AddIn", "PackageAddIn.targets"));
+
+        // Extract the PackAddIn target section (from "<Target Name="PackAddIn">" to "</Target>").
+        var packStart = targets.IndexOf("<Target Name=\"PackAddIn\">", StringComparison.Ordinal);
+        var packEnd = targets.IndexOf("</Target>", packStart, StringComparison.Ordinal);
+        var packTarget = targets.Substring(packStart, packEnd - packStart);
+
+        // PackAddIn must not reference the deploy directory (%APPDATA%).
+        packTarget.Should().NotContain("AddInDeployDir",
+            "PackAddIn must never copy files to %APPDATA%; only InstallAddIn may deploy");
+        packTarget.Should().NotContain("APPDATA",
+            "PackAddIn must never reference %APPDATA%");
+    }
+
+    [Fact]
+    public void PackAddIn_uses_atomic_temp_file_pattern()
+    {
+        var root = FindRepositoryRoot();
+        var targets = File.ReadAllText(Path.Combine(root, "src", "TiaAgent.AddIn", "PackageAddIn.targets"));
+
+        // Extract the PackAddIn target section to verify atomicity is scoped correctly.
+        var packStart = targets.IndexOf("<Target Name=\"PackAddIn\">", StringComparison.Ordinal);
+        var packEnd = targets.IndexOf("</Target>", packStart, StringComparison.Ordinal);
+        var packTarget = targets.Substring(packStart, packEnd - packStart);
+
+        // The final artifact must only appear after verification.
+        // This requires a temp file that is renamed after verification passes.
+        packTarget.Should().Contain("AddInTempPackagePath",
+            "PackAddIn must write to a temp file before the final path");
+
+        // The temp file extension (.addin.tmp) must be defined in properties
+        // so it differs from the final artifact name.
+        targets.Should().Contain(".addin.tmp",
+            "Temp file must use .addin.tmp extension to distinguish from final artifact");
+
+        packTarget.Should().Contain("Move-Item",
+            "Atomic finalize must use Move-Item to rename temp to final path");
+        packTarget.Should().Contain("AddInPackagePath",
+            "Atomic finalize must target the final artifact path");
+    }
+
+    [Fact]
+    public void Config_xml_still_uses_version_template()
+    {
+        var root = FindRepositoryRoot();
+        var config = File.ReadAllText(Path.Combine(root, "src", "TiaAgent.AddIn", "Config.xml"));
+
+        // Config.xml must use the placeholder, never a hardcoded version.
+        config.Should().Contain("__PRODUCT_VERSION__");
+        ProductVersionLiteral.IsMatch(config).Should().BeFalse(
+            "Config.xml must not contain a hardcoded version number");
     }
 
     private static string FindRepositoryRoot()

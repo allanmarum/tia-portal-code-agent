@@ -155,7 +155,7 @@ function Show-Help {
     Write-Host "  pack-cli      Package the CLI (not yet implemented)"
     Write-Host "  verify-addin  Verify the .addin package contents"
     Write-Host "  install-dev   Deploy the .addin to TIA Portal UserAddIns"
-    Write-Host "  all           Build, test, and pack-addin in sequence"
+    Write-Host "  all           Build, test, pack-addin, and verify-addin in sequence"
     Write-Host "  clean         Remove all build artifacts"
     Write-Host "  mcp           Show MCP server installation instructions"
     Write-Host "  help          Show this help message"
@@ -172,6 +172,6 @@ switch ($Command) {
     "install-dev" { Invoke-InstallDev }
     "mcp" { Invoke-Mcp }
     "clean" { Invoke-Clean }
-    "all" { Invoke-Build; Invoke-Test; Invoke-PackAddIn }
+    "all" { Invoke-Build; Invoke-Test; Invoke-PackAddIn; Invoke-VerifyAddIn }
     default { Show-Help }
 }
