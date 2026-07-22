@@ -2,202 +2,42 @@
   "schemaVersion": 1,
   "repository": "industrix-com-br/tia-portal-code-agent",
   "executionMode": "strictly-serial",
-  "previous": "REL-002",
-  "current": "REL-003",
-  "next": "REL-004",
+  "previous": "REL-003",
+  "current": "REL-004",
+  "next": "REL-005",
   "terminal": "RELEASE-COMPLETE",
   "items": [
-    {
-      "key": "REL-000",
-      "issue": 28,
-      "title": "Implement serial roadmap governance and execution gate",
-      "status": "done"
-    },
-    {
-      "key": "REL-001",
-      "issue": 29,
-      "title": "Configure repository rulesets and protect the main branch",
-      "status": "done"
-    },
-    {
-      "key": "REL-002",
-      "issue": 30,
-      "title": "Define release architecture, versioning, and compatibility policy",
-      "status": "done"
-    },
-    {
-      "key": "REL-003",
-      "issue": 31,
-      "title": "Centralize product version across all components",
-      "status": "active"
-    },
-    {
-      "key": "REL-004",
-      "issue": 32,
-      "title": "Separate build, test, packaging, verification, and installation",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-005",
-      "issue": 33,
-      "title": "Make Add-In packaging deterministic and atomic",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-006",
-      "issue": 34,
-      "title": "Implement instance-aware process lifecycle management",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-007",
-      "issue": 35,
-      "title": "Pin the .NET SDK and centralize dependency versions",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-008",
-      "issue": 36,
-      "title": "Implement the consolidated pull request CI pipeline",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-009",
-      "issue": 37,
-      "title": "Add repository health, security, and contribution automation",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-010",
-      "issue": 38,
-      "title": "Create the TiaAgent CLI as a .NET global tool",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-011",
-      "issue": 39,
-      "title": "Define installed filesystem layout and manifest schemas",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-012",
-      "issue": 40,
-      "title": "Bundle Bridge, Add-In, configuration, and notices into the CLI package",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-013",
-      "issue": 41,
-      "title": "Implement tia-agent install and uninstall",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-014",
-      "issue": 42,
-      "title": "Implement doctor, configuration, and version diagnostics",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-015",
-      "issue": 43,
-      "title": "Migrate runtime supervision from PowerShell to the CLI",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-016",
-      "issue": 44,
-      "title": "Implement agent runtime selection and validation",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-017",
-      "issue": 45,
-      "title": "Implement side-by-side versions and atomic activation",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-018",
-      "issue": 46,
-      "title": "Implement update and rollback commands",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-019",
-      "issue": 47,
-      "title": "Provision and secure the Windows release runner",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-020",
-      "issue": 48,
-      "title": "Automate Add-In packaging inside the consolidated release workflow",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-021",
-      "issue": 49,
-      "title": "Implement mandatory release signing",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-022",
-      "issue": 50,
-      "title": "Generate checksums, SBOM, and release manifest",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-023",
-      "issue": 51,
-      "title": "Implement tag-driven GitHub and NuGet release publication",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-024",
-      "issue": 52,
-      "title": "Implement alpha, beta, RC, and stable update channels",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-025",
-      "issue": 53,
-      "title": "Complete user, maintainer, and release documentation",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-026",
-      "issue": 54,
-      "title": "Execute clean-machine end-to-end installation validation",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-027",
-      "issue": 55,
-      "title": "Publish and validate v0.2.0-beta.1",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-028",
-      "issue": 56,
-      "title": "Harden installation, update, and failure recovery",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-029",
-      "issue": 57,
-      "title": "Publish and validate v0.2.0-rc.1",
-      "status": "blocked"
-    },
-    {
-      "key": "REL-030",
-      "issue": 58,
-      "title": "Publish v0.2.0 stable",
-      "status": "blocked"
-    },
-    {
-      "key": "RELEASE-COMPLETE",
-      "issue": null,
-      "title": "Serial release roadmap complete",
-      "status": "blocked"
-    }
+    { "key": "REL-000", "issue": 28, "title": "Implement serial roadmap governance and execution gate", "status": "done" },
+    { "key": "REL-001", "issue": 29, "title": "Configure repository rulesets and protect the main branch", "status": "done" },
+    { "key": "REL-002", "issue": 30, "title": "Define release architecture, versioning, and compatibility policy", "status": "done" },
+    { "key": "REL-003", "issue": 31, "title": "Centralize product version across all components", "status": "done" },
+    { "key": "REL-004", "issue": 32, "title": "Separate build, test, packaging, verification, and installation", "status": "active" },
+    { "key": "REL-005", "issue": 33, "title": "Make Add-In packaging deterministic and atomic", "status": "blocked" },
+    { "key": "REL-006", "issue": 34, "title": "Implement instance-aware process lifecycle management", "status": "blocked" },
+    { "key": "REL-007", "issue": 35, "title": "Pin the .NET SDK and centralize dependency versions", "status": "blocked" },
+    { "key": "REL-008", "issue": 36, "title": "Implement the consolidated pull request CI pipeline", "status": "blocked" },
+    { "key": "REL-009", "issue": 37, "title": "Add repository health, security, and contribution automation", "status": "blocked" },
+    { "key": "REL-010", "issue": 38, "title": "Create the TiaAgent CLI as a .NET global tool", "status": "blocked" },
+    { "key": "REL-011", "issue": 39, "title": "Define installed filesystem layout and manifest schemas", "status": "blocked" },
+    { "key": "REL-012", "issue": 40, "title": "Bundle Bridge, Add-In, configuration, and notices into the CLI package", "status": "blocked" },
+    { "key": "REL-013", "issue": 41, "title": "Implement tia-agent install and uninstall", "status": "blocked" },
+    { "key": "REL-014", "issue": 42, "title": "Implement doctor, configuration, and version diagnostics", "status": "blocked" },
+    { "key": "REL-015", "issue": 43, "title": "Migrate runtime supervision from PowerShell to the CLI", "status": "blocked" },
+    { "key": "REL-016", "issue": 44, "title": "Implement agent runtime selection and validation", "status": "blocked" },
+    { "key": "REL-017", "issue": 45, "title": "Implement side-by-side versions and atomic activation", "status": "blocked" },
+    { "key": "REL-018", "issue": 46, "title": "Implement update and rollback commands", "status": "blocked" },
+    { "key": "REL-019", "issue": 47, "title": "Provision and secure the Windows release runner", "status": "blocked" },
+    { "key": "REL-020", "issue": 48, "title": "Automate Add-In packaging inside the consolidated release workflow", "status": "blocked" },
+    { "key": "REL-021", "issue": 49, "title": "Implement mandatory release signing", "status": "blocked" },
+    { "key": "REL-022", "issue": 50, "title": "Generate checksums, SBOM, and release manifest", "status": "blocked" },
+    { "key": "REL-023", "issue": 51, "title": "Implement tag-driven GitHub and NuGet release publication", "status": "blocked" },
+    { "key": "REL-024", "issue": 52, "title": "Implement alpha, beta, RC, and stable update channels", "status": "blocked" },
+    { "key": "REL-025", "issue": 53, "title": "Complete user, maintainer, and release documentation", "status": "blocked" },
+    { "key": "REL-026", "issue": 54, "title": "Execute clean-machine end-to-end installation validation", "status": "blocked" },
+    { "key": "REL-027", "issue": 55, "title": "Publish and validate v0.2.0-beta.1", "status": "blocked" },
+    { "key": "REL-028", "issue": 56, "title": "Harden installation, update, and failure recovery", "status": "blocked" },
+    { "key": "REL-029", "issue": 57, "title": "Publish and validate v0.2.0-rc.1", "status": "blocked" },
+    { "key": "REL-030", "issue": 58, "title": "Publish v0.2.0 stable", "status": "blocked" },
+    { "key": "RELEASE-COMPLETE", "issue": null, "title": "Serial release roadmap complete", "status": "blocked" }
   ]
 }

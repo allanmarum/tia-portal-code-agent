@@ -8,7 +8,7 @@
   <Product>
     <Name>TIA Portal Code Agent</Name>
     <Id>tia_portal_code_agent</Id>
-    <Version>0.1.0</Version>
+    <Version>__PRODUCT_VERSION__</Version>
   </Product>
 
   <FeatureAssembly>

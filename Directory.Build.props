@@ -3,7 +3,19 @@
     <TiaPortalVersion>V21</TiaPortalVersion>
     <TiaPublicApiDir Condition="'$(TiaPublicApiDir)' == ''">$(ProgramFiles)\Siemens\Automation\Portal V21\PublicAPI\V21\net48</TiaPublicApiDir>
     <TiaAddInApiDir Condition="'$(TiaAddInApiDir)' == ''">$(TiaPublicApiDir)</TiaAddInApiDir>
-    <Version>0.1.0</Version>
+
+    <!-- One authoritative product version. Release builds pass /p:Version=X.Y.Z[-prerelease]. -->
+    <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
+    <PackageVersion>$(Version)</PackageVersion>
+    <ProductVersion>$(Version)</ProductVersion>
+    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">0.0.0.0</AssemblyVersion>
+    <FileVersion Condition="'$(FileVersion)' == ''">0.0.0.0</FileVersion>
+    <SourceRevisionId Condition="'$(SourceRevisionId)' == '' and '$(GITHUB_SHA)' != ''">$(GITHUB_SHA)</SourceRevisionId>
+    <SourceRevisionId Condition="'$(SourceRevisionId)' == ''">unknown</SourceRevisionId>
+    <!-- Source Link appends SourceRevisionId automatically; do not duplicate it here. -->
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(Version)</InformationalVersion>
+    <RepositoryCommit>$(SourceRevisionId)</RepositoryCommit>
+
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
