@@ -67,13 +67,36 @@ function Test-TiaAgentStaleRuntime {
         }
     }
 
-    # Clean stale mimo/node processes from crashed supervisor
-    # These are orphaned OpenCode processes that survived a supervisor crash.
-    # Kill all mimo processes since we're about to start a fresh one.
-    $staleMimoProcesses = Get-Process -Name 'mimo' -ErrorAction SilentlyContinue
-    foreach ($proc in $staleMimoProcesses) {
-        Write-TiaAgentLog -Level 'WARN' -Event 'stale_process_killed' -Message "Killing stale mimo process (PID: $($proc.Id), started: $($proc.StartTime))"
-        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    # Clean stale mimo/node runtime processes from crashed supervisor
+    # Validate command line and working directory to avoid terminating unrelated processes.
+    try {
+        $candidatePids = @()
+        $wmiProcesses = Get-CimInstance Win32_Process -Filter "Name = 'mimo.exe' OR Name = 'node.exe' OR Name = 'mimo'" -ErrorAction SilentlyContinue
+        if ($wmiProcesses) {
+            $candidatePids = $wmiProcesses | Where-Object {
+                $_.CommandLine -like "*opencode.generated.json*" -or
+                $_.CommandLine -like "*TiaAgent*" -or
+                $_.CommandLine -like "*mimo*serve*"
+            } | ForEach-Object { [int]$_.ProcessId }
+        }
+        else {
+            # Fallback to Get-Process if WMI unavailable
+            $mimoProcs = Get-Process -Name 'mimo' -ErrorAction SilentlyContinue
+            if ($mimoProcs) {
+                $candidatePids = $mimoProcs | ForEach-Object { $_.Id }
+            }
+        }
+
+        foreach ($pidToKill in $candidatePids) {
+            $proc = Get-Process -Id $pidToKill -ErrorAction SilentlyContinue
+            if ($proc) {
+                Write-TiaAgentLog -Level 'WARN' -Event 'stale_process_killed' -Message "Killing stale runtime process (PID: $($proc.Id), name: $($proc.ProcessName))"
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    catch {
+        Write-TiaAgentLog -Level 'WARN' -Event 'stale_process_cleanup_error' -Message "Error checking stale processes: $($_.Exception.Message)"
     }
 
     # Clean stale secrets (older than 24 hours)
