@@ -28,7 +28,7 @@ public sealed class ProductVersionConsistencyTests
     }
 
     [Fact]
-    public void Project_files_do_not_duplicate_product_versions()
+    public void Project_files_do_not_override_the_product_version()
     {
         var root = FindRepositoryRoot();
         var projectFiles = Directory.EnumerateFiles(root, "*.csproj", SearchOption.AllDirectories)
@@ -36,9 +36,11 @@ public sealed class ProductVersionConsistencyTests
 
         foreach (var projectFile in projectFiles)
         {
-            var text = File.ReadAllText(projectFile);
-            ProductVersionLiteral.IsMatch(text).Should().BeFalse($"{projectFile} must inherit the product version from Directory.Build.props");
-            XDocument.Parse(text).Descendants("Version").Should().BeEmpty($"{projectFile} must not define a product version");
+            var document = XDocument.Load(projectFile);
+            document.Descendants("Version").Should().BeEmpty($"{projectFile} must inherit Version from Directory.Build.props");
+            document.Descendants("PackageVersion").Should().BeEmpty($"{projectFile} must inherit PackageVersion from Directory.Build.props");
+            document.Descendants("ProductVersion").Should().BeEmpty($"{projectFile} must inherit ProductVersion from Directory.Build.props");
+            document.Descendants("InformationalVersion").Should().BeEmpty($"{projectFile} must inherit InformationalVersion from Directory.Build.props");
         }
     }
 
