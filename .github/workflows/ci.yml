@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  serial-gate:
+    name: Serial roadmap gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read protected validator from base when present
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p .ci
+          if git cat-file -e "${BASE_SHA}:scripts/ci/validate-serial-roadmap.ps1" 2>/dev/null; then
+            git show "${BASE_SHA}:scripts/ci/validate-serial-roadmap.ps1" > .ci/validate-serial-roadmap.ps1
+          else
+            cp scripts/ci/validate-serial-roadmap.ps1 .ci/validate-serial-roadmap.ps1
+          fi
+
+      - name: Run validator self-test
+        shell: pwsh
+        run: ./.ci/validate-serial-roadmap.ps1 -SelfTest
+
+      - name: Read base roadmap when present
+        id: base-roadmap
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p .ci
+          if git cat-file -e "${BASE_SHA}:.github/serial-roadmap.json" 2>/dev/null; then
+            git show "${BASE_SHA}:.github/serial-roadmap.json" > .ci/base-serial-roadmap.json
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate serial transition
+        shell: pwsh
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+          BASE_ROADMAP_PRESENT: ${{ steps.base-roadmap.outputs.present }}
+        run: |
+          $parameters = @{
+            HeadRoadmapPath = '.github/serial-roadmap.json'
+            PullRequestBody = $env:PR_BODY
+            PullRequestTitle = $env:PR_TITLE
+            BranchName = $env:HEAD_BRANCH
+          }
+
+          if ($env:BASE_ROADMAP_PRESENT -eq 'true') {
+            $parameters.BaseRoadmapPath = '.ci/base-serial-roadmap.json'
+          }
+
+          ./.ci/validate-serial-roadmap.ps1 @parameters
