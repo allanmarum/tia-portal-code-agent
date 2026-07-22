@@ -71,13 +71,14 @@ Do not merge while any review conversation is unresolved. Before merge, update t
 
 The ruleset requires only checks guaranteed to run on every pull request targeting `main`.
 
-Current required check:
+Current required checks:
 
 ```text
 Serial roadmap gate
+Build and test
 ```
 
-REL-008 will add the consolidated implementation CI job. Once that job exists on `main`, maintainers must add its stable job name to the ruleset without removing `Serial roadmap gate`.
+Once `Build and test` exists on `main`, maintainers must add its stable job name to the ruleset without removing `Serial roadmap gate`.
 
 Do not make optional, release-only, matrix-child, or environment-specific checks mandatory.
 

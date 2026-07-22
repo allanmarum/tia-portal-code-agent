@@ -28,7 +28,7 @@ Explain the problem addressed and why this change is limited to the active issue
 ## Required checks
 
 - [ ] `Serial roadmap gate` passes.
-- [ ] The consolidated CI check passes when it is present on `main`.
+- [ ] `Build and test` passes.
 
 ## Notes
 

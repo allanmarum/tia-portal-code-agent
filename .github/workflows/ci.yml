@@ -74,3 +74,24 @@ jobs:
           }
 
           ./.ci/validate-serial-roadmap.ps1 @parameters
+
+  build-and-test:
+    name: Build and test
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+
+      - name: Run build and test script
+        shell: pwsh
+        run: |
+          ./build.ps1 build
+          ./build.ps1 test
+

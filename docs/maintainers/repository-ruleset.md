@@ -30,16 +30,17 @@ Do not enable a required approval count until the repository has a second active
 
 The required checks must match the job names emitted by `.github/workflows/ci.yml` exactly.
 
-Current required check:
+Current required checks:
 
 - `Serial roadmap gate`
+- `Build and test`
 
-When REL-008 introduces the consolidated implementation CI job, add that job as the second required check without removing the serial gate. Do not require transient matrix children, optional checks, release jobs, or external checks that are not guaranteed to run on every pull request targeting `main`.
+When REL-008 introduces the consolidated implementation CI job (`Build and test`), add that job as the second required check without removing the serial gate. Do not require transient matrix children, optional checks, release jobs, or external checks that are not guaranteed to run on every pull request targeting `main`.
 
-Expected final required-check set after REL-008:
+Expected required-check set:
 
 - `Serial roadmap gate`
-- the single consolidated CI job defined by REL-008
+- `Build and test`
 
 ## Pull request merge policy
 
