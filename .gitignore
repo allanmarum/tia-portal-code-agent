@@ -47,6 +47,7 @@ config/opencode.json
 ~$*
 *~
 CodeCoverage/
+.mimocode/
 
 # MSBuild Binary and Structured Log
 *.binlog
