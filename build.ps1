@@ -9,7 +9,7 @@
 #>
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("build", "test", "pack", "all", "clean", "install", "verify", "mcp", "help")]
+    [ValidateSet("build", "test", "pack-addin", "pack-cli", "verify-addin", "install-dev", "all", "clean", "mcp", "help")]
     [string]$Command = "help",
 
     [ValidatePattern('^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+|-dev)?$')]
@@ -78,30 +78,6 @@ function Write-Step($step, $total, $text) { Write-Host "[$step/$total] $text" -F
 function Write-Ok($text) { Write-Host "  OK: $text" -ForegroundColor Green }
 function Write-Fail($text) { Write-Host "  FAIL: $text" -ForegroundColor Red }
 function Write-Info($text) { Write-Host "  $text" -ForegroundColor Gray }
-function Write-Warn($text) { Write-Host "  WARN: $text" -ForegroundColor DarkYellow }
-
-function Stop-StaleDotnetHosts {
-    $stale = Get-Process -Name "dotnet" -ErrorAction SilentlyContinue
-    if ($stale) {
-        Write-Info "Stopping $($stale.Count) stale dotnet.exe process(es) to release file locks..."
-        $stale | Stop-Process -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Milliseconds 500
-    }
-}
-
-function Remove-FileWithRetry {
-    param([Parameter(Mandatory = $true)][string]$Path, [int]$MaxAttempts = 12, [int]$DelayMilliseconds = 500)
-    if (-not (Test-Path -LiteralPath $Path)) { return }
-    [GC]::Collect(); [GC]::WaitForPendingFinalizers()
-    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-        try { Remove-Item -LiteralPath $Path -Force -ErrorAction Stop; return }
-        catch {
-            if ($attempt -eq $MaxAttempts) { throw "Cannot remove '$Path' after $MaxAttempts attempts: $($_.Exception.Message)" }
-            Write-Warn "Package is locked; retrying removal ($attempt/$MaxAttempts)..."
-            Start-Sleep -Milliseconds $DelayMilliseconds
-        }
-    }
-}
 
 function Invoke-Dotnet {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
@@ -109,12 +85,17 @@ function Invoke-Dotnet {
     if ($LASTEXITCODE -ne 0) { throw "dotnet command failed with exit code $LASTEXITCODE" }
 }
 
+function Invoke-MsBuildTarget {
+    param([Parameter(Mandatory = $true)][string]$Target)
+    & dotnet msbuild "$Root\src\TiaAgent.AddIn\TiaAgent.AddIn.csproj" -t:$Target -p:Configuration=$Config @MsBuildVersionArguments
+    if ($LASTEXITCODE -ne 0) { throw "MSBuild target '$Target' failed with exit code $LASTEXITCODE" }
+}
+
 function Invoke-Build {
     Write-Header "BUILD $ProductVersion"
-    Write-Step 1 3 "Releasing stale file locks..."; Stop-StaleDotnetHosts
-    Write-Step 2 3 "Compiling solution..."
+    Write-Step 1 2 "Compiling solution..."
     Invoke-Dotnet @("build", "$Root\TiaAgent.sln", "--configuration", $Config, "--verbosity", "quiet")
-    Write-Step 3 3 "Verifying artifacts..."
+    Write-Step 2 2 "Verifying artifacts..."
     foreach ($artifact in @(
         "$Root\src\TiaAgent.AddIn\bin\$Config\net48\TiaAgent.AddIn.dll",
         "$Root\src\TiaAgent.Bridge\bin\$Config\net8.0\TiaAgent.Bridge.dll"
@@ -130,81 +111,24 @@ function Invoke-Test {
     Write-Ok "All tests passed"
 }
 
-function Get-PublisherVersion {
-    # Siemens Publisher requires numeric-only versions (X.Y.Z); strip prerelease suffixes.
-    return $ProductVersion -replace '-.*', ''
+function Invoke-PackAddIn {
+    Write-Header "PACK ADD-IN $ProductVersion"
+    Invoke-MsBuildTarget -Target "PackAddIn"
 }
 
-function New-VersionedAddInConfig {
-    param([string]$Destination)
-    $template = "$Root\src\TiaAgent.AddIn\Config.xml"
-    $content = [IO.File]::ReadAllText($template)
-    if (-not $content.Contains("__PRODUCT_VERSION__")) { throw "Config.xml does not contain __PRODUCT_VERSION__." }
-    $publisherVersion = Get-PublisherVersion
-    $content = $content.Replace("__PRODUCT_VERSION__", $publisherVersion)
-    [IO.File]::WriteAllText($Destination, $content, (New-Object Text.UTF8Encoding($false)))
+function Invoke-PackCli {
+    Write-Header "PACK CLI $ProductVersion"
+    throw "pack-cli is not yet implemented. Will be added when the CLI global tool is created (REL-010)."
 }
 
-function Get-AddInFile {
-    $versionTag = $ProductVersion -replace '[^0-9A-Za-z-]', '-'
-    return "$Root\artifacts\TiaAgent-$versionTag.addin"
+function Invoke-VerifyAddIn {
+    Write-Header "VERIFY ADD-IN $ProductVersion"
+    Invoke-MsBuildTarget -Target "VerifyAddIn"
 }
 
-function Invoke-Pack {
-    Write-Header "PACKAGING $ProductVersion"
-    Add-Type -AssemblyName WindowsBase
-    $packDir = "$Root\artifacts"
-    $addinFile = Get-AddInFile
-    $temporaryAddinFile = "$addinFile.$([Guid]::NewGuid().ToString('N')).addin"
-    $addinBin = "$Root\src\TiaAgent.AddIn\bin\$Config\net48"
-    $generatedConfig = "$addinBin\Config.xml"
-    $publisher = "C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe"
-
-    New-Item -ItemType Directory -Path $packDir -Force | Out-Null
-    Remove-FileWithRetry -Path $addinFile
-    if (-not (Test-Path "$addinBin\TiaAgent.AddIn.dll")) { throw "TiaAgent.AddIn.dll not found. Run build first." }
-    New-VersionedAddInConfig -Destination $generatedConfig
-
-    try {
-        if (-not (Test-Path $publisher)) { throw "Publisher not found: $publisher" }
-        & $publisher -f $generatedConfig -o $temporaryAddinFile -l "$addinBin\publisher_log.txt" -v -c 2>&1 | ForEach-Object { Write-Info $_ }
-        if ($LASTEXITCODE -ne 0) { throw "Siemens Publisher failed." }
-
-        $signerExe = "$Root\tools\OpcSigner\bin\$Config\net48\OpcSigner.exe"
-        if (Test-Path $signerExe) {
-            & $signerExe $temporaryAddinFile
-            if ($LASTEXITCODE -ne 0) { throw "Package signing failed." }
-        } else { Write-Warn "OpcSigner not found; package remains unsigned." }
-
-        $package = [IO.Packaging.Package]::Open($temporaryAddinFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
-        try {
-            $hasFeature = @($package.GetParts() | Where-Object { $_.Uri.ToString() -match 'TIAAGENT\.ADDIN' }).Count -gt 0
-            if (-not $hasFeature) { throw "Feature assembly missing from package." }
-        } finally { $package.Close(); $package.Dispose() }
-
-        Move-Item -LiteralPath $temporaryAddinFile -Destination $addinFile -Force
-        if (Test-Path "$Root\THIRD_PARTY_NOTICES.md") { Copy-Item "$Root\THIRD_PARTY_NOTICES.md" $packDir -Force }
-        Write-Ok "Created $addinFile"
-        Write-Info "Version: $ProductVersion"
-        Write-Info "Commit: $CommitSha"
-    } finally {
-        if (Test-Path $temporaryAddinFile) { Remove-Item $temporaryAddinFile -Force -ErrorAction SilentlyContinue }
-    }
-}
-
-function Invoke-Verify {
-    Write-Header "VERIFY PACKAGE $ProductVersion"
-    Add-Type -AssemblyName WindowsBase
-    $addinFile = Get-AddInFile
-    if (-not (Test-Path $addinFile)) { throw ".addin file not found: $addinFile" }
-    $package = [IO.Packaging.Package]::Open($addinFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
-    try {
-        $parts = @($package.GetParts() | ForEach-Object { $_.Uri.ToString() })
-        foreach ($pattern in @('TIAAGENT\.ADDIN', '^/EngineeringVersion$', '/Meta/', '/Permissions/')) {
-            if (-not ($parts -match $pattern)) { throw "Package verification failed for pattern: $pattern" }
-        }
-    } finally { $package.Close(); $package.Dispose() }
-    Write-Ok "Package verification passed"
+function Invoke-InstallDev {
+    Write-Header "INSTALL DEV $ProductVersion"
+    Invoke-MsBuildTarget -Target "InstallAddIn"
 }
 
 function Invoke-Clean {
@@ -213,16 +137,6 @@ function Invoke-Clean {
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path "$Root\artifacts") { Remove-Item "$Root\artifacts" -Recurse -Force }
     Write-Ok "Cleanup completed"
-}
-
-function Invoke-Install {
-    Write-Header "INSTALL $ProductVersion"
-    $userAddIns = "$env:APPDATA\Siemens\Automation\Portal V21\UserAddIns"
-    New-Item -ItemType Directory -Path $userAddIns -Force | Out-Null
-    $addinFile = Get-AddInFile
-    if (-not (Test-Path $addinFile)) { throw ".addin file not found. Run pack first." }
-    Copy-Item $addinFile $userAddIns -Force
-    Write-Ok "Installed to $userAddIns"
 }
 
 function Invoke-Mcp {
@@ -234,18 +148,31 @@ function Invoke-Mcp {
 function Show-Help {
     Write-Header "TIA PORTAL CODE AGENT"
     Write-Host "Usage: .\build.ps1 <command> [-Version X.Y.Z[-channel.N]]"
-    Write-Host "Commands: build, test, pack, verify, install, clean, all, mcp, help"
+    Write-Host ""
+    Write-Host "Commands:"
+    Write-Host "  build         Compile the solution (no packaging or installation)"
+    Write-Host "  test          Run all tests"
+    Write-Host "  pack-addin    Package the TIA Portal Add-In (.addin)"
+    Write-Host "  pack-cli      Package the CLI (not yet implemented)"
+    Write-Host "  verify-addin  Verify the .addin package contents"
+    Write-Host "  install-dev   Deploy the .addin to TIA Portal UserAddIns"
+    Write-Host "  all           Build, test, and pack-addin in sequence"
+    Write-Host "  clean         Remove all build artifacts"
+    Write-Host "  mcp           Show MCP server installation instructions"
+    Write-Host "  help          Show this help message"
+    Write-Host ""
     Write-Host "Resolved version: $ProductVersion"
 }
 
 switch ($Command) {
     "build" { Invoke-Build }
     "test" { Invoke-Test }
-    "pack" { Invoke-Pack }
-    "verify" { Invoke-Verify }
+    "pack-addin" { Invoke-PackAddIn }
+    "pack-cli" { Invoke-PackCli }
+    "verify-addin" { Invoke-VerifyAddIn }
+    "install-dev" { Invoke-InstallDev }
     "mcp" { Invoke-Mcp }
     "clean" { Invoke-Clean }
-    "install" { Invoke-Install }
-    "all" { Invoke-Build; Invoke-Test; Invoke-Pack }
+    "all" { Invoke-Build; Invoke-Test; Invoke-PackAddIn }
     default { Show-Help }
 }
