@@ -97,7 +97,8 @@ function Invoke-Build {
     Write-Step 2 2 "Verifying artifacts..."
     foreach ($artifact in @(
         "$Root\src\TiaAgent.AddIn\bin\$Config\net48\TiaAgent.AddIn.dll",
-        "$Root\src\TiaAgent.Bridge\bin\$Config\net8.0\TiaAgent.Bridge.dll"
+        "$Root\src\TiaAgent.Bridge\bin\$Config\net8.0\TiaAgent.Bridge.dll",
+        "$Root\src\TiaAgent.Cli\bin\$Config\net8.0\TiaAgent.Cli.dll"
     )) {
         if (-not (Test-Path $artifact)) { throw "Expected build artifact not found: $artifact" }
         Write-Ok (Split-Path $artifact -Leaf)
@@ -117,7 +118,10 @@ function Invoke-PackAddIn {
 
 function Invoke-PackCli {
     Write-Header "PACK CLI $ProductVersion"
-    throw "pack-cli is not yet implemented. Will be added when the CLI global tool is created (REL-010)."
+    $outputDir = "$Root\artifacts"
+    if (-not (Test-Path $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
+    Invoke-Dotnet @("pack", "$Root\src\TiaAgent.Cli\TiaAgent.Cli.csproj", "--configuration", $Config, "--output", $outputDir)
+    Write-Ok "CLI package created at $outputDir"
 }
 
 function Invoke-VerifyAddIn {
@@ -152,10 +156,10 @@ function Show-Help {
     Write-Host "  build         Compile the solution (no packaging or installation)"
     Write-Host "  test          Run all tests"
     Write-Host "  pack-addin    Package the TIA Portal Add-In (.addin)"
-    Write-Host "  pack-cli      Package the CLI (not yet implemented)"
+    Write-Host "  pack-cli      Package the CLI global tool (.nupkg)"
     Write-Host "  verify-addin  Verify the .addin package contents"
     Write-Host "  install-dev   Deploy the .addin to TIA Portal UserAddIns"
-    Write-Host "  all           Build, test, pack-addin, and verify-addin in sequence"
+    Write-Host "  all           Build, test, pack-addin, pack-cli, and verify-addin in sequence"
     Write-Host "  clean         Remove all build artifacts"
     Write-Host "  mcp           Show MCP server installation instructions"
     Write-Host "  help          Show this help message"
@@ -172,6 +176,6 @@ switch ($Command) {
     "install-dev" { Invoke-InstallDev }
     "mcp" { Invoke-Mcp }
     "clean" { Invoke-Clean }
-    "all" { Invoke-Build; Invoke-Test; Invoke-PackAddIn; Invoke-VerifyAddIn }
+    "all" { Invoke-Build; Invoke-Test; Invoke-PackAddIn; Invoke-PackCli; Invoke-VerifyAddIn }
     default { Show-Help }
 }
