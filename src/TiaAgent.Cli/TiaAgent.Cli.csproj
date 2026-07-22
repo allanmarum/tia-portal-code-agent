@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>tia-agent</ToolCommandName>
+    <RootNamespace>TiaAgent.Cli</RootNamespace>
+    <Description>TIA Portal Code Agent CLI global tool</Description>
+    <PackageId>TiaAgent.Cli</PackageId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
+  </ItemGroup>
+</Project>

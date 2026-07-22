@@ -162,4 +162,23 @@ public class DependencyTests
         targetFramework?.FrameworkName.Should().Contain("NET",
             "TiaAgent.Bridge should target .NET 8");
     }
+
+    [Fact]
+    public void Cli_ShouldReferenceContracts()
+    {
+        var assembly = typeof(TiaAgent.Cli.Program).Assembly;
+        var references = assembly.GetReferencedAssemblies();
+        references.Should().Contain(r =>
+            r.Name == "TiaAgent.Contracts",
+            "TiaAgent.Cli should reference TiaAgent.Contracts");
+    }
+
+    [Fact]
+    public void Cli_ShouldTargetNet8()
+    {
+        var assembly = typeof(TiaAgent.Cli.Program).Assembly;
+        var targetFramework = assembly.GetCustomAttribute<System.Runtime.Versioning.TargetFrameworkAttribute>();
+        targetFramework?.FrameworkName.Should().Contain("NET",
+            "TiaAgent.Cli should target .NET 8");
+    }
 }
