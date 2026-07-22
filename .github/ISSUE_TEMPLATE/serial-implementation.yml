@@ -1,0 +1,84 @@
+name: Serial roadmap implementation
+about: Define one implementation item in the strictly serial release roadmap
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Only create or work on this issue when its predecessor is complete and the serial roadmap marks it as active.
+
+  - type: input
+    id: sequence
+    attributes:
+      label: Sequence key
+      description: Use the assigned REL-XXX identifier.
+      placeholder: REL-000
+    validations:
+      required: true
+
+  - type: input
+    id: predecessor
+    attributes:
+      label: Predecessor issue
+      description: Enter the immediately preceding issue, or `none` for the first item.
+      placeholder: "#27 or none"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: classification
+    attributes:
+      label: Classification
+      options:
+        - Code
+        - DevOps
+        - GitHub governance
+        - Infrastructure
+        - Documentation
+        - QA
+        - Release
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: State the single outcome this issue must deliver.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: List the work included in this issue.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Provide objective, testable completion criteria.
+      placeholder: |
+        - [ ] Criterion one
+        - [ ] Criterion two
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: Identify work that must remain for later roadmap items.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: serial_acknowledgement
+    attributes:
+      label: Serial execution acknowledgement
+      options:
+        - label: I will not create a branch, implement, or open a PR until this item is active in `.github/serial-roadmap.json`.
+          required: true
