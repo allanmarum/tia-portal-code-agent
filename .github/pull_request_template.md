@@ -20,7 +20,16 @@ Explain the problem addressed and why this change is limited to the active issue
 - [ ] I ran `./scripts/ci/validate-serial-roadmap.ps1 -SelfTest`.
 - [ ] This PR advances `.github/serial-roadmap.json` by exactly one item.
 - [ ] No work from a blocked future issue is included.
+- [ ] The branch is current with `main`.
+- [ ] All review conversations are resolved.
+- [ ] The PR is ready to use squash merge only.
+- [ ] Any required maintainer or `CODEOWNERS` review has been requested.
+
+## Required checks
+
+- [ ] `Serial roadmap gate` passes.
+- [ ] The consolidated CI check passes when it is present on `main`.
 
 ## Notes
 
-Document known limitations, follow-up work, or manual validation requirements.
+Document known limitations, follow-up work, manual repository settings, or validation requirements.

@@ -1,5 +1,13 @@
 # Contributing
 
+## Protected main branch
+
+`main` is protected by the repository ruleset documented in [`docs/maintainers/repository-ruleset.md`](docs/maintainers/repository-ruleset.md).
+
+All changes must be made through a pull request. Direct pushes, force pushes, and deletion of `main` are prohibited. Pull requests must have all required checks passing, all conversations resolved, and the source branch updated with the latest `main` before merge.
+
+Use squash merge only. Merge commits and rebase merges are not part of the repository workflow.
+
 ## Serial release roadmap
 
 The release-professionalization roadmap is executed strictly in sequence. The source of truth is [`.github/serial-roadmap.json`](.github/serial-roadmap.json).
@@ -45,6 +53,7 @@ Each implementation PR must:
 - update the roadmap atomically from the current item to the next item;
 - preserve the order, issue numbers, keys, and titles of all roadmap items;
 - use a title beginning with the active sequence key;
+- request review from the owners selected by `.github/CODEOWNERS`;
 - include these standalone metadata lines:
 
   ```text
@@ -55,6 +64,22 @@ Each implementation PR must:
   ```
 
 The branch name, PR metadata, active roadmap item, and issue number must agree.
+
+Do not merge while any review conversation is unresolved. Before merge, update the source branch with the latest `main` and wait for all required checks to run again.
+
+## Required checks
+
+The ruleset requires only checks guaranteed to run on every pull request targeting `main`.
+
+Current required check:
+
+```text
+Serial roadmap gate
+```
+
+REL-008 will add the consolidated implementation CI job. Once that job exists on `main`, maintainers must add its stable job name to the ruleset without removing `Serial roadmap gate`.
+
+Do not make optional, release-only, matrix-child, or environment-specific checks mandatory.
 
 ## Roadmap transition
 

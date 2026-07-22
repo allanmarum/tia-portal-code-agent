@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "repository": "industrix-com-br/tia-portal-code-agent",
   "executionMode": "strictly-serial",
-  "previous": "REL-000",
-  "current": "REL-001",
-  "next": "REL-002",
+  "previous": "REL-001",
+  "current": "REL-002",
+  "next": "REL-003",
   "terminal": "RELEASE-COMPLETE",
   "items": [
     {
@@ -17,13 +17,13 @@
       "key": "REL-001",
       "issue": 29,
       "title": "Configure repository rulesets and protect the main branch",
-      "status": "active"
+      "status": "done"
     },
     {
       "key": "REL-002",
       "issue": 30,
       "title": "Define release architecture, versioning, and compatibility policy",
-      "status": "blocked"
+      "status": "active"
     },
     {
       "key": "REL-003",

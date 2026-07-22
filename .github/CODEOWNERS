@@ -1,0 +1,8 @@
+# Default ownership for the repository.
+* @allanmarum
+
+# Repository governance and automation require maintainer review.
+/.github/ @allanmarum
+/CONTRIBUTING.md @allanmarum
+/AGENTS.md @allanmarum
+/scripts/ci/ @allanmarum
