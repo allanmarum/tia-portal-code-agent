@@ -49,12 +49,15 @@ jobs:
           if [[ -n "$SUFFIX" ]]; then
             CHANNEL="${BASH_REMATCH[3]}"
             IS_PRERELEASE="true"
+            FULL_VERSION="${VERSION}${SUFFIX}"
           else
             CHANNEL="stable"
             IS_PRERELEASE="false"
+            FULL_VERSION="$VERSION"
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "full-version=$FULL_VERSION" >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "is-prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
@@ -145,7 +148,7 @@ jobs:
       - name: Validate artifacts match tag and commit
         shell: pwsh
         env:
-          EXPECTED_VERSION: ${{ needs.validate-tag.outputs.version }}
+          EXPECTED_VERSION: ${{ needs.validate-tag.outputs.full-version }}
           EXPECTED_COMMIT: ${{ github.sha }}
         run: |
           $ErrorActionPreference = "Stop"
