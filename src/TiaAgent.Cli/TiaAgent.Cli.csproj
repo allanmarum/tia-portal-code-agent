@@ -12,4 +12,8 @@
   <ItemGroup>
     <ProjectReference Include="..\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="payload\**\*" Pack="true" PackagePath="tools/net8.0/any/payload/%(RecursiveDir)%(Filename)%(Extension)" Condition="Exists('payload')" />
+  </ItemGroup>
 </Project>

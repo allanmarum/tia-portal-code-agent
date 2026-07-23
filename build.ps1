@@ -120,7 +120,134 @@ function Invoke-PackCli {
     Write-Header "PACK CLI $ProductVersion"
     $outputDir = "$Root\artifacts"
     if (-not (Test-Path $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
+
+    $payloadDir = "$Root\src\TiaAgent.Cli\payload"
+    if (Test-Path $payloadDir) { Remove-Item $payloadDir -Recurse -Force }
+    New-Item -ItemType Directory -Path "$payloadDir\Bridge" -Force | Out-Null
+    New-Item -ItemType Directory -Path "$payloadDir\AddIn" -Force | Out-Null
+    New-Item -ItemType Directory -Path "$payloadDir\config" -Force | Out-Null
+    New-Item -ItemType Directory -Path "$payloadDir\notices" -Force | Out-Null
+
+    # 1. Publish Bridge binaries into payload
+    Write-Info "Publishing Bridge binaries into payload..."
+    Invoke-Dotnet @("publish", "$Root\src\TiaAgent.Bridge\TiaAgent.Bridge.csproj", "--configuration", $Config, "--output", "$payloadDir\Bridge", "--no-restore")
+
+    # Ensure no Siemens assemblies are bundled in Bridge
+    Get-ChildItem "$payloadDir\Bridge" -Filter "Siemens.*.dll" | Remove-Item -Force
+
+    # 2. Copy Add-In package if available
+    $addinFiles = Get-ChildItem "$outputDir" -Filter "TiaAgent-*.addin" | Sort-Object LastWriteTime -Descending
+    if ($addinFiles.Count -gt 0) {
+        Write-Info "Bundling Add-In artifact: $($addinFiles[0].Name)"
+        Copy-Item $addinFiles[0].FullName "$payloadDir\AddIn\$($addinFiles[0].Name)" -Force
+    } else {
+        Write-Info "No .addin artifact found in artifacts/. Staging placeholder manifest entry."
+    }
+
+    # 3. Copy configuration templates and notices
+    if (Test-Path "$Root\config") {
+        Copy-Item "$Root\config\*" "$payloadDir\config\" -Recurse -Force
+    }
+    if (Test-Path "$Root\THIRD_PARTY_NOTICES.md") {
+        Copy-Item "$Root\THIRD_PARTY_NOTICES.md" "$payloadDir\notices\" -Force
+    }
+    if (Test-Path "$Root\LICENSE") {
+        Copy-Item "$Root\LICENSE" "$payloadDir\notices\" -Force
+    }
+
+    # 4. Generate payload-manifest.json
+    Write-Info "Generating payload-manifest.json..."
+    $filesList = @()
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+
+    Get-ChildItem $payloadDir -Recurse -File | ForEach-Object {
+        $relPath = $_.FullName.Substring($payloadDir.Length + 1).Replace("\", "/")
+        $stream = [System.IO.File]::OpenRead($_.FullName)
+        $hashBytes = $sha256.ComputeHash($stream)
+        $stream.Close()
+        $hashStr = ([System.BitConverter]::ToString($hashBytes)).Replace("-", "").ToLowerInvariant()
+
+        $filesList += @{
+            relativePath = $relPath
+            sha256Hash = $hashStr
+            sizeBytes = $_.Length
+        }
+    }
+    $sha256.Dispose()
+
+    $publisherVersion = $ProductVersion -replace '-.*$', ''
+    $addinRelativePath = if (Test-Path "$payloadDir\AddIn") {
+        $a = Get-ChildItem "$payloadDir\AddIn" -Filter "*.addin" | Select-Object -First 1
+        if ($a) { "AddIn/$($a.Name)" } else { "AddIn/TiaAgent-$publisherVersion.addin" }
+    } else { "AddIn/TiaAgent-$publisherVersion.addin" }
+
+    $bridgeMainDll = "$payloadDir\Bridge\TiaAgent.Bridge.dll"
+    $bridgeHash = if (Test-Path $bridgeMainDll) {
+        $stream = [System.IO.File]::OpenRead($bridgeMainDll)
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $hb = $sha.ComputeHash($stream)
+        $stream.Close()
+        $sha.Dispose()
+        ([System.BitConverter]::ToString($hb)).Replace("-", "").ToLowerInvariant()
+    } else { "" }
+
+    $manifestData = @{
+        schemaVersion = 1
+        productVersion = $ProductVersion
+        commitSha = $CommitSha
+        builtAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ")
+        compatibility = @{
+            tiaPortalVersion = "V21"
+            opennessVersion = "V21"
+            targetFramework = "net8.0"
+        }
+        components = @{
+            bridge = @{
+                relativePath = "Bridge/TiaAgent.Bridge.dll"
+                version = $ProductVersion
+                sha256Hash = $bridgeHash
+                sizeBytes = if (Test-Path $bridgeMainDll) { (Get-Item $bridgeMainDll).Length } else { 0 }
+            }
+            addin = @{
+                relativePath = $addinRelativePath
+                version = $ProductVersion
+                sha256Hash = ""
+                sizeBytes = 0
+            }
+        }
+        files = $filesList
+    }
+
+    $jsonStr = $manifestData | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText("$payloadDir\payload-manifest.json", $jsonStr)
+
+    # 5. Pack CLI tool
     Invoke-Dotnet @("pack", "$Root\src\TiaAgent.Cli\TiaAgent.Cli.csproj", "--configuration", $Config, "--output", $outputDir)
+
+    # 6. Verify payload in produced .nupkg
+    $nupkg = Get-ChildItem "$outputDir" -Filter "TiaAgent.Cli.*.nupkg" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($nupkg) {
+        Write-Info "Verifying payload in $($nupkg.Name)..."
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($nupkg.FullName)
+        try {
+            $entries = @($zip.Entries | ForEach-Object { $_.FullName })
+            $requiredEntries = @(
+                'tools/net8.0/any/payload/payload-manifest.json',
+                'tools/net8.0/any/payload/Bridge/TiaAgent.Bridge.dll',
+                'tools/net8.0/any/payload/notices/THIRD_PARTY_NOTICES.md'
+            )
+            foreach ($req in $requiredEntries) {
+                if (-not ($entries -contains $req)) {
+                    throw "CLI package missing required payload file: $req"
+                }
+            }
+            Write-Ok "CLI package payload verification passed"
+        } finally {
+            $zip.Dispose()
+        }
+    }
+
     Write-Ok "CLI package created at $outputDir"
 }
 
