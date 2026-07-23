@@ -27,6 +27,7 @@ public static class Program
         return command switch
         {
             "install" => HandleInstall(commandArgs),
+            "activate" => HandleActivate(commandArgs),
             "uninstall" => HandleUninstall(commandArgs),
             "start" or "run" => HandleStart(commandArgs),
             "stop" => HandleStop(commandArgs),
@@ -80,6 +81,53 @@ public static class Program
         }
 
         return InstallCommand.Execute(options);
+    }
+
+    private static int HandleActivate(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowActivateHelp();
+            return 0;
+        }
+
+        var options = new ActivateOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--version", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.Version = args[++i];
+            }
+            else if (string.Equals(arg, "--force", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-f", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Force = true;
+            }
+            else if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--user-addins-dir", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.UserAddInsDir = args[++i];
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (!arg.StartsWith('-') && string.IsNullOrEmpty(options.Version))
+            {
+                options.Version = arg;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unknown option for activate: '{arg}'");
+                ShowActivateHelp();
+                return 1;
+            }
+        }
+
+        return ActivateCommand.Execute(options);
     }
 
     private static int HandleUninstall(string[] args)
@@ -432,7 +480,8 @@ public static class Program
         Console.WriteLine("Usage: tia-agent <command> [options]");
         Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  install        Install or activate TIA Agent version");
+        Console.WriteLine("  install        Install TIA Agent version");
+        Console.WriteLine("  activate       Activate installed TIA Agent version");
         Console.WriteLine("  uninstall      Uninstall TIA Agent version(s)");
         Console.WriteLine("  start          Start and monitor runtime services (alias: run)");
         Console.WriteLine("  stop           Stop runtime services");
@@ -445,6 +494,19 @@ public static class Program
         Console.WriteLine("Options:");
         Console.WriteLine("  -v, --version  Show version information");
         Console.WriteLine("  -h, --help     Show help and usage information");
+    }
+
+    private static void ShowActivateHelp()
+    {
+        Console.WriteLine("Usage: tia-agent activate <version> [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --version <ver>          Specify version to activate");
+        Console.WriteLine("  -f, --force              Force activation even if version directory check fails");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  --user-addins-dir <dir>  Path to custom Siemens UserAddIns directory");
+        Console.WriteLine("  --json                   Output result in JSON format");
+        Console.WriteLine("  -h, --help               Show help for activate command");
     }
 
     private static void ShowRuntimeHelp()
