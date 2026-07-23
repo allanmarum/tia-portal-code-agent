@@ -19,7 +19,6 @@
   <!-- Framework references always needed -->
   <ItemGroup>
     <Reference Include="System.Net.Http" />
-    <Reference Include="System.Drawing" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />

@@ -19,7 +19,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\artifacts\cli-payload\**\*" Pack="true" PackagePath="tools/net8.0/any/payload/%(RecursiveDir)%(Filename)%(Extension)" Condition="Exists('..\..\artifacts\cli-payload')" />
+    <None Include="..\..\artifacts\cli-payload\**\*" Exclude="..\..\artifacts\cli-payload\notices\LICENSE" Pack="true" PackagePath="tools/net8.0/any/payload/%(RecursiveDir)%(Filename)%(Extension)" Condition="Exists('..\..\artifacts\cli-payload')" />
+    <!-- Explicit include for LICENSE: use TargetPath to force exact destination -->
+    <None Include="..\..\artifacts\cli-payload\notices\LICENSE" Pack="true" PackagePath="tools/net8.0/any/payload/notices" Condition="Exists('..\..\artifacts\cli-payload\notices\LICENSE')" />
   </ItemGroup>
 
   <ItemGroup>

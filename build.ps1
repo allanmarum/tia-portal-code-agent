@@ -170,6 +170,11 @@ function Invoke-PackCli {
         Write-Info "Bundling Add-In artifact: $($addinFiles[0].Name)"
         Copy-Item $addinFiles[0].FullName "$payloadDir\AddIn\$($addinFiles[0].Name)" -Force
     } else {
+        # For release builds (non-dev), the .addin is required
+        $isReleaseBuild = $ProductVersion -match '^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$' -and $ProductVersion -notlike '*-dev'
+        if ($isReleaseBuild) {
+            throw "Release build requires Add-In artifact. Run 'pack-addin' before 'pack-cli'."
+        }
         Write-Info "No .addin artifact found in artifacts/. Staging placeholder manifest entry."
     }
 
@@ -282,6 +287,20 @@ function Invoke-PackCli {
                 'tools/net8.0/any/payload/Bridge/TiaAgent.Bridge.dll',
                 'tools/net8.0/any/payload/notices/THIRD_PARTY_NOTICES.md'
             )
+
+            # Check for Add-In file if it should be present
+            $publisherVersion = $ProductVersion -replace '-.*$', ''
+            $expectedAddInEntry = "tools/net8.0/any/payload/AddIn/TiaAgent-$publisherVersion.addin"
+            $hasAddIn = $entries -contains $expectedAddInEntry
+            if ($hasAddIn) {
+                Write-Ok "CLI package includes Add-In artifact"
+            } else {
+                $isReleaseBuild = $ProductVersion -match '^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$' -and $ProductVersion -notlike '*-dev'
+                if ($isReleaseBuild) {
+                    throw "Release CLI package missing Add-In artifact: $expectedAddInEntry"
+                }
+                Write-Info "CLI package does not include Add-In artifact (dev build)"
+            }
             foreach ($req in $requiredEntries) {
                 if (-not ($entries -contains $req)) {
                     throw "CLI package missing required payload file: $req"

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using TiaAgent.Cli.Installation;
 using TiaAgent.Cli.Layout;
 using TiaAgent.Cli.Payload;
 
@@ -117,7 +118,7 @@ public static class InstallCommand
 
         if (options.Force && Directory.Exists(versionDir))
         {
-            Directory.Delete(versionDir, recursive: true);
+            TryDeleteDirectory(versionDir, stdout, stderr);
         }
 
         CopyDirectory(payloadDir, versionDir, overwrite: true);
@@ -156,9 +157,21 @@ public static class InstallCommand
 
         EnsureDefaultConfig(layout.ConfigPath, payloadDir);
 
-        DeployAddInIfPresent(versionDir, payloadDir, options.UserAddInsDir, stdout);
+        var deploymentResult = AddInDeployer.Deploy(versionDir, options.UserAddInsDir, layout.RootPath, stdout);
 
+        stdout.WriteLine();
         stdout.WriteLine($"Successfully installed TIA Agent v{targetVersion} to '{versionDir}'.");
+
+        if (!deploymentResult.IsFullyDeployed)
+        {
+            stdout.WriteLine();
+            stdout.WriteLine("NOTE: The TIA Portal Add-In was not deployed to the UserAddIns directory.");
+            if (deploymentResult.FallbackAddInPath != null)
+            {
+                stdout.WriteLine($"The Add-In is available at: {deploymentResult.FallbackAddInPath}");
+            }
+        }
+
         return 0;
     }
 
@@ -188,41 +201,30 @@ public static class InstallCommand
         File.WriteAllText(configPath, defaultConfigJson);
     }
 
-    private static void DeployAddInIfPresent(string versionDir, string payloadDir, string? customUserAddInsDir, TextWriter stdout)
+    private static void TryDeleteDirectory(string dir, TextWriter stdout, TextWriter stderr)
     {
-        var userAddInsDir = customUserAddInsDir;
-        if (string.IsNullOrWhiteSpace(userAddInsDir))
+        const int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            userAddInsDir = Path.Combine(appData, "Siemens", "Automation", "Portal V21", "UserAddIns");
-        }
-
-        var searchDirs = new[]
-        {
-            Path.Combine(versionDir, "AddIn"),
-            Path.Combine(payloadDir, "AddIn")
-        };
-
-        foreach (var dir in searchDirs)
-        {
-            if (!Directory.Exists(dir))
+            try
             {
-                continue;
+                Directory.Delete(dir, recursive: true);
+                return;
             }
-
-            var addinFiles = Directory.GetFiles(dir, "*.addin");
-            if (addinFiles.Length > 0)
+            catch (IOException) when (attempt < maxRetries)
             {
-                Directory.CreateDirectory(userAddInsDir);
-                foreach (var addinFile in addinFiles)
-                {
-                    var destFile = Path.Combine(userAddInsDir, Path.GetFileName(addinFile));
-                    File.Copy(addinFile, destFile, overwrite: true);
-                    stdout.WriteLine($"Deployed Add-In artifact '{Path.GetFileName(addinFile)}' to '{userAddInsDir}'.");
-                }
-                break;
+                stdout.WriteLine($"Directory locked, retrying deletion ({attempt}/{maxRetries})...");
+                System.Threading.Thread.Sleep(1000);
+            }
+            catch (UnauthorizedAccessException) when (attempt < maxRetries)
+            {
+                stdout.WriteLine($"Directory locked, retrying deletion ({attempt}/{maxRetries})...");
+                System.Threading.Thread.Sleep(1000);
             }
         }
+
+        // Final attempt — let it throw if it fails
+        Directory.Delete(dir, recursive: true);
     }
 
     private static void CopyDirectory(string sourceDir, string destinationDir, bool overwrite)
