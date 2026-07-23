@@ -105,10 +105,30 @@ public static class ActivateCommand
             return 1;
         }
 
+        string? previousVersion = null;
+        if (File.Exists(layout.CurrentManifestPath))
+        {
+            try
+            {
+                var existingCurrent = ManifestStore.Read<CurrentManifest>(layout.CurrentManifestPath);
+                if (!string.IsNullOrWhiteSpace(existingCurrent.ActiveVersion) &&
+                    !string.Equals(existingCurrent.ActiveVersion, targetVersion, StringComparison.OrdinalIgnoreCase))
+                {
+                    previousVersion = existingCurrent.ActiveVersion;
+                }
+                else
+                {
+                    previousVersion = existingCurrent.PreviousVersion;
+                }
+            }
+            catch { }
+        }
+
         var currentManifest = new CurrentManifest
         {
             SchemaVersion = 1,
             ActiveVersion = targetVersion,
+            PreviousVersion = previousVersion,
             ActivatedAt = DateTimeOffset.UtcNow,
             ActivatedBy = "tia-agent activate"
         };

@@ -45,7 +45,8 @@ Tracks the currently active version.
 ```json
 {
   "schemaVersion": 1,
-  "activeVersion": "0.2.0-beta.1",
+  "activeVersion": "0.2.0-rc.1",
+  "previousVersion": "0.2.0-beta.1",
   "activatedAt": "2026-07-22T21:00:00.0000000+00:00",
   "activatedBy": "tia-agent CLI"
 }

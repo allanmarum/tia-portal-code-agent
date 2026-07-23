@@ -12,6 +12,7 @@ public sealed class CurrentManifest
     public string ActiveVersion { get; init; } = string.Empty;
     public DateTimeOffset ActivatedAt { get; init; } = DateTimeOffset.UtcNow;
     public string? ActivatedBy { get; init; }
+    public string? PreviousVersion { get; init; }
 }
 
 /// <summary>
