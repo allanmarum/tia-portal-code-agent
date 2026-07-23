@@ -19,8 +19,8 @@ public sealed class RuntimeCommandTests : IDisposable
 
     public RuntimeCommandTests()
     {
-        _tempDirectory = Path.Combine(Path.GetTempPath(), "RuntimeCommandTests_" + Guid.NewGuid().ToString("N"));
-        _customRoot = Path.Combine(_tempDirectory, "TiaAgentRoot");
+        _tempDirectory = Path.Join(Path.GetTempPath(), "RuntimeCommandTests_" + Guid.NewGuid().ToString("N"));
+        _customRoot = Path.Join(_tempDirectory, "TiaAgentRoot");
 
         Directory.CreateDirectory(_tempDirectory);
         Directory.CreateDirectory(_customRoot);
