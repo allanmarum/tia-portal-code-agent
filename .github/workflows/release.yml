@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       version: ${{ steps.parse.outputs.version }}
+      fullVersion: ${{ steps.parse.outputs.fullVersion }}
       channel: ${{ steps.parse.outputs.channel }}
       is-prerelease: ${{ steps.parse.outputs.is-prerelease }}
       tag: ${{ steps.parse.outputs.tag }}
