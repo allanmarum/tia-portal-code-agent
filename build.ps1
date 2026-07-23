@@ -82,7 +82,16 @@ function Write-Info($text) { Write-Host "  $text" -ForegroundColor Gray }
 
 function Invoke-Dotnet {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
-    & dotnet @Arguments @MsBuildVersionArguments
+    # Insert MsBuildVersionArguments before '--' separator (if present)
+    # so they are passed to dotnet, not to the application.
+    $separatorIndex = [Array]::IndexOf($Arguments, '--')
+    if ($separatorIndex -ge 0) {
+        $before = $Arguments[0..($separatorIndex - 1)]
+        $after = $Arguments[$separatorIndex..($Arguments.Length - 1)]
+        & dotnet @before @MsBuildVersionArguments @after
+    } else {
+        & dotnet @Arguments @MsBuildVersionArguments
+    }
     if ($LASTEXITCODE -ne 0) { throw "dotnet command failed with exit code $LASTEXITCODE" }
 }
 
