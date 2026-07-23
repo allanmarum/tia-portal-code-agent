@@ -64,7 +64,7 @@ public static class ReleaseStore
         var lines = fileHashes
             .OrderBy(kvp => kvp.Key, StringComparer.OrdinalIgnoreCase)
             .Select(kvp => $"{kvp.Value.ToLowerInvariant()}  {kvp.Key}");
-        
+
         File.WriteAllText(filePath, string.Join("\n", lines) + "\n", Encoding.UTF8);
     }
 

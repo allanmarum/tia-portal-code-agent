@@ -1,5 +1,5 @@
-using TiaAgent.Contracts.Errors;
 using TiaAgent.Contracts.Common;
+using TiaAgent.Contracts.Errors;
 using Xunit;
 
 namespace TiaAgent.Contracts.Tests;
