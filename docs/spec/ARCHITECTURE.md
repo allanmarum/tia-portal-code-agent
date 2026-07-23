@@ -135,20 +135,15 @@ TIA Portal V21
 TiaAgent.Bridge.exe (.NET 8)
 ├── Local HTTP API
 ├── Task and session management
-├── OpenCode HTTP client
+├── Runtime adapters (Mimo, OpenCode, Claude)
 ├── Event and response translation
 ├── Bearer token authentication
 ├── Cancellation support
 └── Diagnostics endpoint
             │
-            │ OpenCode HTTP API
+            │ CLI or HTTP
             ▼
-OpenCode Server (port 43120)
-├── Agent runtime
-├── Model interaction
-├── Session management
-├── Tool-calling loop
-└── MCP client
+Agent Runtime (Mimo CLI, OpenCode, or Claude Code)
             │
             │ stdio
             ▼
@@ -319,20 +314,6 @@ public BlockDto TiaReadBlock(string blockName)
 }
 ```
 
-## 4.6 `TiaAgent.OpenCode`
-
-Responsible for:
-
-- OpenCode server health check;
-- session creation/reuse;
-- initial task submission;
-- event monitoring;
-- cancellation;
-- runtime failure normalization;
-- association between OpenCode session and TIA session.
-
-Must not contain TIA project logic.
-
 ---
 
 ## 5. Permitted dependency graph
@@ -343,13 +324,9 @@ Permitted dependencies:
 AddIn ────────────────> Bridge client (via IAgentBridgeClient)
 AddIn ────────────────> Contracts
 
-Bridge ───────────────> Application
 Bridge ───────────────> Contracts
-Bridge ───────────────> OpenCode
 
 Application ──────────> Contracts
-
-OpenCode ─────────────> Contracts
 
 MCP (Czarnak) ────────> Openness SDK (external)
 ```
@@ -358,7 +335,6 @@ Prohibited:
 
 ```text
 AddIn ─X─> Application
-AddIn ─X─> OpenCode
 AddIn ─X─> Microsoft.Extensions.*
 AddIn ─X─> System.Text.Json
 AddIn ─X─> Microsoft.Bcl.AsyncInterfaces

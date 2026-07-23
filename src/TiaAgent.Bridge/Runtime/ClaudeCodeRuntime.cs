@@ -227,21 +227,7 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
         return (executable, "");
     }
 
-    /// <summary>
-    /// Returns the full path if the file is found on PATH, null otherwise.
-    /// </summary>
-    private static string? FindOnPath(string fileName)
-    {
-        var pathVar = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrEmpty(pathVar)) return null;
-
-        foreach (var dir in pathVar.Split(Path.PathSeparator))
-        {
-            var full = Path.Combine(dir.Trim(), fileName);
-            if (File.Exists(full)) return full;
-        }
-        return null;
-    }
+    private static string? FindOnPath(string fileName) => RuntimeHelpers.FindOnPath(fileName);
 
     /// <summary>
     /// Builds the command-line arguments for claude -p.
@@ -364,10 +350,7 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
         }
     }
 
-    private static string EscapeShellArg(string arg)
-    {
-        return "\"" + arg.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-    }
+    private static string EscapeShellArg(string arg) => RuntimeHelpers.EscapeShellArg(arg);
 
     public void Dispose()
     {

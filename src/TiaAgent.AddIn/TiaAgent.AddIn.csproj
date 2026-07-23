@@ -16,19 +16,22 @@
     <DefineConstants>$(DefineConstants);SIEMENS</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(SiemensAssembliesExist)' == 'true'">
+  <!-- Framework references always needed -->
+  <ItemGroup>
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Drawing" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />
     <Reference Include="System.Xaml" />
-    <!-- Openness assemblies from PublicAPI\V21\net48 -->
+  </ItemGroup>
+
+  <!-- Siemens Openness assemblies (only when TIA Portal is installed) -->
+  <ItemGroup Condition="'$(SiemensAssembliesExist)' == 'true'">
     <Reference Include="Siemens.Engineering.Base">
       <HintPath>$(TiaPublicApiDir)\Siemens.Engineering.Base.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <!-- Add-In framework assemblies from PublicAPI\V21.AddIn -->
     <Reference Include="Siemens.Engineering.AddIn.Base">
       <HintPath>$(TiaAddInApiDir)\Siemens.Engineering.AddIn.Base.dll</HintPath>
       <Private>false</Private>
@@ -37,16 +40,6 @@
       <HintPath>$(TiaAddInApiDir)\Siemens.Engineering.AddIn.Step7.dll</HintPath>
       <Private>false</Private>
     </Reference>
-  </ItemGroup>
-
-  <!-- Framework references needed even without Siemens -->
-  <ItemGroup Condition="'$(SiemensAssembliesExist)' != 'true'">
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
-    <Reference Include="WindowsBase" />
-    <Reference Include="System.Xaml" />
   </ItemGroup>
 
   <!-- Embedded icon resource for TIA Portal context menu -->

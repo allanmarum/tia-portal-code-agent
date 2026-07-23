@@ -29,7 +29,7 @@ TIA Portal Add-In (UI + context capture, net48)
               → TIA Portal Openness SDK
 ```
 
-This repo contains: **Add-In**, **Application** (orchestrator), **OpenCode** (HTTP client), **Contracts** (DTOs, errors, interfaces, runtime abstraction), **Bridge** (HTTP bridge with runtime adapters), **Runtime Supervisor** (PowerShell scripts for service lifecycle).
+This repo contains: **Add-In**, **Application** (business logic), **Contracts** (DTOs, errors, interfaces, runtime abstraction), **Bridge** (HTTP bridge with runtime adapters), **Runtime Supervisor** (PowerShell scripts for service lifecycle).
 
 MCP and Openness are delegated to Czarnak's `TiaMcpServer` — do not duplicate TIA access.
 

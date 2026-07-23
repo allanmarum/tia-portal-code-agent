@@ -385,10 +385,7 @@ public sealed class OpenCodeRuntime : IAgentRuntime, IDisposable
         return lastContent ?? ProcessRunner.StripAnsiEscapes(stdout.Trim());
     }
 
-    private static string EscapeShellArg(string arg)
-    {
-        return "\"" + arg.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-    }
+    private static string EscapeShellArg(string arg) => RuntimeHelpers.EscapeShellArg(arg);
 
     #endregion
 

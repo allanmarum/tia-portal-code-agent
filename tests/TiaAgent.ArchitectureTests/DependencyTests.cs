@@ -50,16 +50,6 @@ public class DependencyTests
     }
 
     [Fact]
-    public void AddIn_ShouldNotReferenceOpenCode()
-    {
-        var assembly = LoadAddInAssembly();
-        var references = assembly.GetReferencedAssemblies();
-        references.Should().NotContain(r =>
-            r.Name == "TiaAgent.OpenCode",
-            "TiaAgent.AddIn must not reference TiaAgent.OpenCode");
-    }
-
-    [Fact]
     public void AddIn_ShouldNotReferenceApplication()
     {
         var assembly = LoadAddInAssembly();

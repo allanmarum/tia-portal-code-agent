@@ -1,6 +1,2 @@
 <Project>
-  <PropertyGroup>
-    <SiemensAssembliesExist Condition="Exists('$(TiaPublicApiDir)\Siemens.Engineering.Base.dll')">true</SiemensAssembliesExist>
-    <SiemensAssembliesExist Condition="'$(SiemensAssembliesExist)' == ''">false</SiemensAssembliesExist>
-  </PropertyGroup>
 </Project>

@@ -84,11 +84,11 @@ Evidence required:
 
 **Partially answered**: The official templates only provide context-menu providers (`ProjectTreeAddInProvider`, `DevicesAndNetworksAddInProvider`, etc.) and VCI workspace providers. No embedded panel mechanism is exposed in the Add-In API. For result display, the Add-In can use `MessageBoxProvider.ShowNotification()` or `ShowConfirmation()`, or launch a separate WPF window via `Siemens.Engineering.AddIn.Utilities.Process`. The Add-In uses WinForms (`UseWindowsForms=true` in csproj), which means WPF windows are also available.
 
-## KU-007 - OpenCode server API
+## KU-007 - Agent runtime API
 
 Question:
 
-- Which installed OpenCode version and endpoint schema will be used?
+- Which installed agent runtime version and endpoint schema will be used?
 
 Evidence required:
 
@@ -96,7 +96,7 @@ Evidence required:
 - official OpenAPI or SDK;
 - health/task/progress/cancel prototype.
 
-**Resolved**: OpenCode/MiMoCode exposes an HTTP API at port 43120. The `OpenCodeHttpClient` implements session creation (`POST /api/sessions`), task start (`POST /api/sessions/{id}/tasks`), event streaming (`GET /api/tasks/{id}/events` via SSE), cancellation (`POST /api/tasks/{id}/cancel`), and health check (`GET /health`). MCP servers are configured in `config/opencode.json` under the `mcp` key.
+**Resolved**: The Bridge supports multiple agent runtimes (Mimo CLI, OpenCode, Claude Code) via runtime adapters. Each adapter handles CLI or HTTP communication with the respective runtime. MCP servers are configured in `config/opencode.json` under the `mcp` key or via MCP config generation for Claude Code.
 
 ## KU-008 - MCP transport in Add-In process
 
@@ -114,7 +114,7 @@ Fallback:
 
 - external MCP host with named-pipe proxy.
 
-**Resolved**: The Add-In targets `net48`. The `ModelContextProtocol.AspNetCore` package requires net8.0, so the MCP server runs in a separate process. We use [Czarnak/tia-portal-mcp](https://github.com/Czarnak/tia-portal-mcp) as the external MCP server — it uses stdio transport (no HTTP port), a two-process model (.NET 8 host + .NET 4.8 OpennessWorker), and is installed as a .NET global tool (`dotnet tool install -g TiaMcpServer`). OpenCode spawns it automatically via the `config/opencode.json` configuration.
+**Resolved**: The Add-In targets `net48`. The `ModelContextProtocol.AspNetCore` package requires net8.0, so the MCP server runs in a separate process. We use [Czarnak/tia-portal-mcp](https://github.com/Czarnak/tia-portal-mcp) as the external MCP server — it uses stdio transport (no HTTP port), a two-process model (.NET 8 host + .NET 4.8 OpennessWorker), and is installed as a .NET global tool (`dotnet tool install -g TiaMcpServer`). The agent runtime spawns it automatically via MCP config.
 
 ## KU-009 - Package deployment permissions
 

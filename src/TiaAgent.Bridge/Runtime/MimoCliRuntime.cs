@@ -277,15 +277,7 @@ public sealed class MimoCliRuntime : IAgentRuntime, IDisposable
         return lastContent ?? "";
     }
 
-    /// <summary>
-    /// Escapes a string for safe use as a shell argument.
-    /// Wraps in double quotes and escapes special characters.
-    /// </summary>
-    private static string EscapeShellArg(string arg)
-    {
-        // Escape for Windows cmd: wrap in double quotes, escape internal quotes
-        return "\"" + arg.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-    }
+    private static string EscapeShellArg(string arg) => RuntimeHelpers.EscapeShellArg(arg);
 
     public void Dispose()
     {

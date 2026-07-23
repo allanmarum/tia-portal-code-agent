@@ -23,7 +23,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
-    <ProjectReference Include="..\..\src\TiaAgent.OpenCode\TiaAgent.OpenCode.csproj" />
   </ItemGroup>
 
 </Project>

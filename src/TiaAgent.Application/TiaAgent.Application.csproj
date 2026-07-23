@@ -5,8 +5,6 @@
     <Description>Business logic, abstractions, and application services</Description>
   </PropertyGroup>
 
-  <!-- Removed Microsoft.Extensions.Logging and DI abstractions to avoid leakage into AddIn -->
-
   <ItemGroup>
     <ProjectReference Include="..\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
   </ItemGroup>

@@ -1,14 +1,14 @@
-# TIA Portal ↔ OpenCode Roundtrip Integration
+# TIA Portal ↔ Agent Runtime Roundtrip Integration
 
 ## Architecture
 
 ```text
 TIA Portal Add-In (UI, commands, selection capture)
   ↓ Runtime Discovery (reads runtime.json)
-TiaAgent.Bridge (.NET 8, task management, session management)
+TiaAgent.Bridge (.NET 8, task management, runtime adapters)
   ↓ HTTP (127.0.0.1:43119)
-OpenCode/MiMoCode Agent Runtime (model interaction, tool-calling loop)
-  ↓ HTTP (127.0.0.1:43120)
+Agent Runtime (Mimo CLI, OpenCode, or Claude Code)
+  ↓ CLI or HTTP
 Czarnak's tia-mcp (.NET 8 MCP server)
   ↓ stdio (MCP protocol)
 OpennessWorker (.NET 4.8)

@@ -22,7 +22,7 @@ tia-mcp doctor
 npx -y @modelcontextprotocol/inspector tia-mcp
 ```
 
-The MCP server is spawned automatically by OpenCode when configured in `config/opencode.json`:
+The MCP server is spawned automatically by the selected agent runtime when configured:
 
 ```json
 {
@@ -55,7 +55,7 @@ Or step by step:
 The Runtime Supervisor provides a single command to start, monitor, and stop all services:
 
 ```powershell
-# Start all services (Bridge + OpenCode)
+# Start all services (Bridge + Agent Runtime)
 .\src\runtime\Scripts\run.ps1
 
 # Check status
@@ -128,7 +128,7 @@ The Add-In now only requires `TiaAgent.AddIn.dll` and `TiaAgent.Contracts.dll` �
 
 ## Add-In Features
 
-- **"AI Assistant"** context menu: Explain, Review, Propose change (requires OpenCode + MCP server)
+- **"AI Assistant"** context menu: Explain, Review, Propose change (requires agent runtime + MCP server)
 - **"TIA Agent Diagnostics"** context menu: Test Integration (self-contained, no dependencies)
 
 ## How to Test
@@ -149,9 +149,8 @@ User right-clicks block in TIA Portal
   → ProjectTreeProvider captures selection snapshot
   → AgentBridgeClient.StartTaskAsync (background thread)
     → HTTP POST to Bridge (port 43119)
-      → Bridge creates/reuses OpenCode session
-      → HTTP POST to OpenCode (port 43120)
-        → OpenCode spawns tia-mcp (stdio child process)
+      → Bridge selects runtime adapter (Mimo, OpenCode, or Claude)
+      → Runtime spawns tia-mcp (stdio child process)
         → Agent calls execute_read_batch
         → Agent generates explanation
       → Bridge returns response
