@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "repository": "industrix-com-br/tia-portal-code-agent",
   "executionMode": "strictly-serial",
-  "previous": "REL-028",
-  "current": "REL-029",
-  "next": "REL-030",
+  "previous": "REL-029",
+  "current": "REL-030",
+  "next": "RELEASE-COMPLETE",
   "terminal": "RELEASE-COMPLETE",
   "items": [
     { "key": "REL-000", "issue": 28, "title": "Implement serial roadmap governance and execution gate", "status": "done" },
@@ -36,8 +36,8 @@
     { "key": "REL-026", "issue": 54, "title": "Execute clean-machine end-to-end installation validation", "status": "done" },
     { "key": "REL-027", "issue": 55, "title": "Publish and validate v0.2.0-beta.1", "status": "done" },
     { "key": "REL-028", "issue": 56, "title": "Harden installation, update, and failure recovery", "status": "done" },
-    { "key": "REL-029", "issue": 57, "title": "Publish and validate v0.2.0-rc.1", "status": "active" },
-    { "key": "REL-030", "issue": 58, "title": "Publish v0.2.0 stable", "status": "blocked" },
+    { "key": "REL-029", "issue": 57, "title": "Publish and validate v0.2.0-rc.1", "status": "done" },
+    { "key": "REL-030", "issue": 58, "title": "Publish v0.2.0 stable", "status": "active" },
     { "key": "RELEASE-COMPLETE", "issue": null, "title": "Serial release roadmap complete", "status": "blocked" }
   ]
 }
