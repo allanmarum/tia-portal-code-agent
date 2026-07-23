@@ -84,6 +84,49 @@ public sealed class RepositoryHealthAndSecurityTests
         unrestricted.Should().BeEmpty("MVP Add-In manifest must not grant UnrestrictedAccess");
     }
 
+    [Fact]
+    public void Release_runner_documentation_exists_and_contains_required_sections()
+    {
+        var root = FindRepositoryRoot();
+        var docPath = Path.Combine(root, "docs", "RELEASE_RUNNER.md");
+
+        File.Exists(docPath).Should().BeTrue("docs/RELEASE_RUNNER.md must exist to document Windows release runner architecture");
+
+        var content = File.ReadAllText(docPath);
+        content.Should().Contain("Runner Identity and Labels", "RELEASE_RUNNER.md must document runner labels");
+        content.Should().Contain("Prerequisites", "RELEASE_RUNNER.md must document hardware and software prerequisites");
+        content.Should().Contain("Security Model", "RELEASE_RUNNER.md must document account and secret security model");
+        content.Should().Contain("Job and Workspace Isolation", "RELEASE_RUNNER.md must document job isolation and workspace sanitization");
+        content.Should().Contain("Maintenance and Disaster Recovery", "RELEASE_RUNNER.md must document maintenance and disaster recovery procedures");
+    }
+
+    [Fact]
+    public void CI_workflow_isolates_pull_requests_from_self_hosted_release_runners()
+    {
+        var root = FindRepositoryRoot();
+        var ciWorkflowPath = Path.Combine(root, ".github", "workflows", "ci.yml");
+
+        File.Exists(ciWorkflowPath).Should().BeTrue(".github/workflows/ci.yml must exist");
+
+        var content = File.ReadAllText(ciWorkflowPath);
+        content.Should().NotContain("release-runner", "PR CI workflow must not consume self-hosted release runners");
+        content.Should().NotContain("self-hosted", "PR CI workflow must not consume self-hosted runners");
+        content.Should().Contain("windows-latest", "PR CI workflow must use GitHub-hosted windows-latest runner");
+    }
+
+    [Fact]
+    public void Release_runner_provisioning_script_exists()
+    {
+        var root = FindRepositoryRoot();
+        var scriptPath = Path.Combine(root, "scripts", "runner", "provision-release-runner.ps1");
+
+        File.Exists(scriptPath).Should().BeTrue("scripts/runner/provision-release-runner.ps1 must exist to automate runner verification");
+
+        var content = File.ReadAllText(scriptPath);
+        content.Should().Contain("Check-Environment", "Provisioning script must validate runner environment");
+        content.Should().Contain("Sanitize-WorkspaceEnvironment", "Provisioning script must support workspace sanitization");
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
