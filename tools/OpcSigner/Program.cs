@@ -91,9 +91,9 @@ class Program
 
     static int SignPackage(
         string addinPath,
-        string explicitThumbprint,
-        string pfxPath,
-        string pfxPassword,
+        string? explicitThumbprint,
+        string? pfxPath,
+        string? pfxPassword,
         bool requireSigning,
         bool allowSelfSigned)
     {
@@ -168,7 +168,7 @@ class Program
                     return 1;
                 }
 
-                VerifyResult result = sigManager.ValidateSignatures();
+                VerifyResult result = sigManager.VerifySignatures(false);
                 if (result != VerifyResult.Success)
                 {
                     Console.Error.WriteLine("[FAIL] Package digital signature verification failed: " + result);
@@ -194,10 +194,10 @@ class Program
         }
     }
 
-    static X509Certificate2 ResolveCertificate(
-        string explicitThumbprint,
-        string pfxPath,
-        string pfxPassword,
+    static X509Certificate2? ResolveCertificate(
+        string? explicitThumbprint,
+        string? pfxPath,
+        string? pfxPassword,
         bool allowSelfSigned)
     {
         string thumbprint = explicitThumbprint ?? Environment.GetEnvironmentVariable("TIA_SIGNING_CERT_THUMBPRINT");
