@@ -127,6 +127,24 @@ public sealed class RepositoryHealthAndSecurityTests
         content.Should().Contain("Sanitize-WorkspaceEnvironment", "Provisioning script must support workspace sanitization");
     }
 
+    [Fact]
+    public void Release_workflow_exists_and_automates_addin_packaging_on_release_runner()
+    {
+        var root = FindRepositoryRoot();
+        var releaseWorkflowPath = Path.Combine(root, ".github", "workflows", "release.yml");
+
+        File.Exists(releaseWorkflowPath).Should().BeTrue(".github/workflows/release.yml must exist for consolidated release packaging");
+
+        var content = File.ReadAllText(releaseWorkflowPath);
+        content.Should().Contain("release-runner", "Release workflow must run on self-hosted release runner");
+        content.Should().Contain("self-hosted", "Release workflow must target self-hosted runners");
+        content.Should().Contain("tia-v21", "Release workflow must target runners with TIA Portal V21");
+        content.Should().Contain("pack-addin", "Release workflow must automate Add-In packaging");
+        content.Should().Contain("verify-addin", "Release workflow must verify the Add-In package");
+        content.Should().Contain("provision-release-runner.ps1", "Release workflow must sanitize the release runner workspace");
+        content.Should().Contain("v*", "Release workflow must trigger on version tag pushes");
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

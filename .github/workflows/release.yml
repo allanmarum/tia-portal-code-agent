@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package-and-verify:
+    name: Package and verify release
+    runs-on: [self-hosted, Windows, x64, tia-v21, release-runner]
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+
+      - name: Sanitize release runner workspace
+        shell: pwsh
+        run: |
+          ./scripts/runner/provision-release-runner.ps1 -SanitizeWorkspace
+
+      - name: Run build and test
+        shell: pwsh
+        run: |
+          ./build.ps1 build
+          ./build.ps1 test
+
+      - name: Package TIA Portal Add-In
+        shell: pwsh
+        run: |
+          ./build.ps1 pack-addin
+
+      - name: Verify TIA Portal Add-In package
+        shell: pwsh
+        run: |
+          ./build.ps1 verify-addin
+
+      - name: Package CLI global tool
+        shell: pwsh
+        run: |
+          ./build.ps1 pack-cli
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            artifacts/*.addin
+            artifacts/*.nupkg
+          if-no-files-found: error

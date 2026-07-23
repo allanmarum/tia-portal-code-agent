@@ -41,7 +41,7 @@ For every release:
 2. Confirm all first-party components resolve to the same product version.
 3. Confirm the target commit is on `main` and all required checks passed.
 4. Confirm the declared TIA Portal compatibility in `docs/COMPATIBILITY.md`.
-5. Build, test, package, sign, and verify using the consolidated release workflow when implemented.
+5. Build, test, package, sign, and verify using the consolidated release workflow (`.github/workflows/release.yml`).
 6. Generate release notes covering changes, compatibility, known limitations, upgrade steps, and rollback.
 7. Create the immutable annotated tag `vX.Y.Z[-prerelease]`.
 8. Publish all artifacts from that exact tagged commit.
