@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using TiaAgent.Cli.Commands;
@@ -17,8 +18,7 @@ public static class Program
 
         if (IsVersionOption(args[0]))
         {
-            ShowVersion();
-            return 0;
+            return HandleVersion(args.Skip(1).ToArray());
         }
 
         var command = args[0].ToLowerInvariant();
@@ -28,6 +28,9 @@ public static class Program
         {
             "install" => HandleInstall(commandArgs),
             "uninstall" => HandleUninstall(commandArgs),
+            "doctor" => HandleDoctor(commandArgs),
+            "config" or "configuration" => HandleConfig(commandArgs),
+            "version" => HandleVersion(commandArgs),
             _ => HandleUnknown(args[0])
         };
     }
@@ -118,6 +121,130 @@ public static class Program
         return UninstallCommand.Execute(options);
     }
 
+    private static int HandleDoctor(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowDoctorHelp();
+            return 0;
+        }
+
+        var options = new DoctorOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--user-addins-dir", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.UserAddInsDir = args[++i];
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (string.Equals(arg, "--verbose", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-v", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Verbose = true;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unknown option for doctor: '{arg}'");
+                ShowDoctorHelp();
+                return 1;
+            }
+        }
+
+        return DoctorCommand.Execute(options);
+    }
+
+    private static int HandleConfig(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowConfigHelp();
+            return 0;
+        }
+
+        var options = new ConfigOptions();
+        var positional = new List<string>();
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (arg.StartsWith('-'))
+            {
+                Console.Error.WriteLine($"Unknown option for config: '{arg}'");
+                ShowConfigHelp();
+                return 1;
+            }
+            else
+            {
+                positional.Add(arg);
+            }
+        }
+
+        if (positional.Count > 0)
+        {
+            options.Subcommand = positional[0];
+        }
+        if (positional.Count > 1)
+        {
+            options.Key = positional[1];
+        }
+        if (positional.Count > 2)
+        {
+            options.Value = positional[2];
+        }
+
+        return ConfigCommand.Execute(options);
+    }
+
+    private static int HandleVersion(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowVersionHelp();
+            return 0;
+        }
+
+        var options = new VersionOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (string.Equals(arg, "--verbose", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-v", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Verbose = true;
+            }
+            else if (arg.StartsWith('-'))
+            {
+                Console.Error.WriteLine($"Unknown option for version: '{arg}'");
+                ShowVersionHelp();
+                return 1;
+            }
+        }
+
+        return VersionCommand.Execute(options);
+    }
+
     private static int HandleUnknown(string arg)
     {
         Console.Error.WriteLine($"Unknown command or option: '{arg}'");
@@ -135,12 +262,6 @@ public static class Program
         string.Equals(arg, "-v", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(arg, "version", StringComparison.OrdinalIgnoreCase);
 
-    private static void ShowVersion()
-    {
-        var version = GetProductVersion();
-        Console.WriteLine($"tia-agent version {version}");
-    }
-
     private static void ShowHelp()
     {
         var version = GetProductVersion();
@@ -148,12 +269,15 @@ public static class Program
         Console.WriteLine("Usage: tia-agent <command> [options]");
         Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  install      Install or activate TIA Agent version");
-        Console.WriteLine("  uninstall    Uninstall TIA Agent version(s)");
+        Console.WriteLine("  install        Install or activate TIA Agent version");
+        Console.WriteLine("  uninstall      Uninstall TIA Agent version(s)");
+        Console.WriteLine("  doctor         Run environment and setup diagnostics");
+        Console.WriteLine("  config         View or modify user configuration settings");
+        Console.WriteLine("  version        Show detailed version information");
         Console.WriteLine();
         Console.WriteLine("Options:");
-        Console.WriteLine("  -v, --version    Show version information");
-        Console.WriteLine("  -h, --help       Show help and usage information");
+        Console.WriteLine("  -v, --version  Show version information");
+        Console.WriteLine("  -h, --help     Show help and usage information");
     }
 
     private static void ShowInstallHelp()
@@ -180,6 +304,46 @@ public static class Program
         Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
         Console.WriteLine("  --user-addins-dir <dir>  Path to custom Siemens UserAddIns directory");
         Console.WriteLine("  -h, --help               Show help for uninstall command");
+    }
+
+    private static void ShowDoctorHelp()
+    {
+        Console.WriteLine("Usage: tia-agent doctor [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  --user-addins-dir <dir>  Path to custom Siemens UserAddIns directory");
+        Console.WriteLine("  --json                   Output diagnostic report in JSON format");
+        Console.WriteLine("  -v, --verbose            Show detailed diagnostic recommendation information");
+        Console.WriteLine("  -h, --help               Show help for doctor command");
+    }
+
+    private static void ShowConfigHelp()
+    {
+        Console.WriteLine("Usage: tia-agent config [subcommand] [options]");
+        Console.WriteLine();
+        Console.WriteLine("Subcommands:");
+        Console.WriteLine("  list                     Display all configuration settings (default)");
+        Console.WriteLine("  get [key]                Get configuration value for key");
+        Console.WriteLine("  set <key> <value>        Set configuration value for key");
+        Console.WriteLine("  path                     Output configuration file path");
+        Console.WriteLine("  reset                    Reset configuration to default settings");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  --json                   Output configuration in JSON format");
+        Console.WriteLine("  -h, --help               Show help for config command");
+    }
+
+    private static void ShowVersionHelp()
+    {
+        Console.WriteLine("Usage: tia-agent version [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  -v, --verbose            Show detailed version and installation diagnostics");
+        Console.WriteLine("  --json                   Output version information in JSON format");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  -h, --help               Show help for version command");
     }
 
     public static string GetProductVersion()

@@ -18,5 +18,6 @@
     <ProjectReference Include="..\..\src\TiaAgent.Application\TiaAgent.Application.csproj" />
     <ProjectReference Include="..\..\src\TiaAgent.OpenCode\TiaAgent.OpenCode.csproj" />
     <ProjectReference Include="..\..\src\TiaAgent.Bridge\TiaAgent.Bridge.csproj" />
+    <ProjectReference Include="..\..\src\TiaAgent.Cli\TiaAgent.Cli.csproj" />
   </ItemGroup>
 </Project>

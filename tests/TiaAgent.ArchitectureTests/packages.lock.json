@@ -148,6 +148,12 @@
           "TiaAgent.Contracts": "[0.0.0-dev, )"
         }
       },
+      "tiaagent.cli": {
+        "type": "Project",
+        "dependencies": {
+          "TiaAgent.Contracts": "[0.0.0-dev, )"
+        }
+      },
       "tiaagent.contracts": {
         "type": "Project"
       },

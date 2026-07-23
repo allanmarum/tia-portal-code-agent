@@ -128,6 +128,11 @@ public class OpenCodeProcessManager : IOpenCodeProcessManager, IDisposable
             return;
         }
 
+        if (_process == null)
+        {
+            return;
+        }
+
         try
         {
             _process.CloseMainWindow();
@@ -224,5 +229,7 @@ public class OpenCodeProcessManager : IOpenCodeProcessManager, IDisposable
             }
             catch { }
         }
+
+        GC.SuppressFinalize(this);
     }
 }

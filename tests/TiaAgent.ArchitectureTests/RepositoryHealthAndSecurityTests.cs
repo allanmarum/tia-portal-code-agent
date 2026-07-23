@@ -75,12 +75,12 @@ public sealed class RepositoryHealthAndSecurityTests
         var configPath = Path.Combine(root, "src", "TiaAgent.AddIn", "Config.xml");
 
         var document = XDocument.Load(configPath);
-        var permissions = document.Descendants("TIAPermissions").Elements().Select(e => e.Name.LocalName).ToList();
+        var permissions = document.Descendants().FirstOrDefault(e => e.Name.LocalName == "TIAPermissions")?.Elements().Select(e => e.Name.LocalName).ToList() ?? new List<string>();
 
         permissions.Should().Contain("TIA.ReadOnly", "MVP Add-In manifest must request read-only permissions");
         permissions.Should().NotContain("TIA.ReadWrite", "MVP Add-In manifest must not request read-write permissions");
 
-        var unrestricted = document.Descendants("UnrestrictedAccess");
+        var unrestricted = document.Descendants().Where(e => e.Name.LocalName == "UnrestrictedAccess");
         unrestricted.Should().BeEmpty("MVP Add-In manifest must not grant UnrestrictedAccess");
     }
 

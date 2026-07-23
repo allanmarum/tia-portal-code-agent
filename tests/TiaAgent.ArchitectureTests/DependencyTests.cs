@@ -13,6 +13,11 @@ public class DependencyTests
         var baseDir = AppContext.BaseDirectory;
         var addInPath = Path.Combine(baseDir, "..", "..", "..", "..", "..",
             "src", "TiaAgent.AddIn", "bin", "Release", "net48", "TiaAgent.AddIn.dll");
+        if (!File.Exists(addInPath))
+        {
+            addInPath = Path.Combine(baseDir, "..", "..", "..", "..", "..",
+                "src", "TiaAgent.AddIn", "bin", "Debug", "net48", "TiaAgent.AddIn.dll");
+        }
         return Assembly.LoadFrom(Path.GetFullPath(addInPath));
     }
     [Fact]

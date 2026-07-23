@@ -94,4 +94,45 @@ public class ProgramTests
         var version = Program.GetProductVersion();
         version.Should().NotBeNullOrEmpty();
     }
+
+    private static readonly string[] DoctorArgs = ["doctor"];
+    private static readonly string[] ConfigListArgs = ["config", "list"];
+
+    [Fact]
+    public void Main_WithDoctorCommand_ReturnsZero()
+    {
+        var originalOut = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        try
+        {
+            var exitCode = Program.Main(DoctorArgs);
+            exitCode.Should().Be(0);
+            writer.ToString().Should().Contain("Doctor Diagnostics");
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+    }
+
+    [Fact]
+    public void Main_WithConfigCommand_ReturnsZero()
+    {
+        var originalOut = Console.Out;
+        using var writer = new StringWriter();
+        Console.SetOut(writer);
+
+        try
+        {
+            var exitCode = Program.Main(ConfigListArgs);
+            exitCode.Should().Be(0);
+            writer.ToString().Should().Contain("Configuration File:");
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+    }
 }
