@@ -22,6 +22,7 @@ public class ManifestStoreTests : IDisposable
         {
             try { Directory.Delete(_tempDirectory, recursive: true); } catch { }
         }
+        GC.SuppressFinalize(this);
     }
 
     [Fact]

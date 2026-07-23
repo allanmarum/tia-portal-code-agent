@@ -23,6 +23,7 @@ public sealed class PayloadValidatorTests : IDisposable
         {
             try { Directory.Delete(_tempDirectory, recursive: true); } catch { }
         }
+        GC.SuppressFinalize(this);
     }
 
     [Fact]

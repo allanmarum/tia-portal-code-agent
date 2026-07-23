@@ -5,6 +5,7 @@ namespace TiaAgent.Cli.Tests;
 
 public class ProgramTests
 {
+    private static readonly string[] UnknownArgs = ["--unknown-foo"];
     [Theory]
     [InlineData("--version")]
     [InlineData("-v")]
@@ -77,7 +78,7 @@ public class ProgramTests
 
         try
         {
-            var exitCode = Program.Main(new[] { "--unknown-foo" });
+            var exitCode = Program.Main(UnknownArgs);
             exitCode.Should().NotBe(0);
             writer.ToString().Should().Contain("Unknown command or option");
         }
