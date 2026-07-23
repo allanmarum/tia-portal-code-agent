@@ -44,7 +44,7 @@ runs-on: [self-hosted, Windows, x64, tia-v21, release-runner]
 1. **Siemens TIA Portal V21:**
    - Standard installation at `%ProgramFiles%\Siemens\Automation\Portal V21`
    - Openness API assemblies located at `%ProgramFiles%\Siemens\Automation\Portal V21\PublicAPI\V21\net48\`
-   - Siemens Add-In Publisher located at `%ProgramFiles%\Siemens\Automation\Portal V21\PublicAPI\V21.AddIn\Siemens.Engineering.AddIn.Publisher.exe`
+   - Siemens Add-In Publisher located at `%ProgramFiles%\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe`
 2. **Developer Tooling:**
    - .NET SDK `8.0.423` (or pinned version per `global.json`)
    - .NET Framework 4.8 Developer Pack
@@ -143,7 +143,7 @@ To verify that the runner can compile, package, and test the Add-In and CLI arti
      ```powershell
      .\config.cmd --url https://github.com/industrix-com-br/tia-portal-code-agent --token <REGISTRATION_TOKEN> --labels "self-hosted,Windows,x64,tia-v21,release-runner" --name "win-release-runner-01"
      ```
-   - Re-install the runner service: `.\run.cmd` or `.\svc.sh install`.
+   - Re-install the runner service: `.\svc.cmd install` and `.\svc.cmd start`.
 
 ---
 

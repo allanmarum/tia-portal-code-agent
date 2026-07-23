@@ -89,9 +89,9 @@ function Check-Environment {
     Write-Section "Release Runner Environment Validation"
 
     # 1. Operating System
-    $isWindows = $env:OS -eq "Windows_NT" -or $IsWindows
+    $runningOnWindows = $env:OS -eq "Windows_NT" -or $IsWindows
     Assert-Prerequisite `
-        -Condition $isWindows `
+        -Condition $runningOnWindows `
         -SuccessMessage "Operating System: Windows x64" `
         -FailureMessage "Release runner must run on Windows x64."
 
@@ -134,7 +134,7 @@ function Check-Environment {
     # 4. Siemens TIA Portal V21 & Add-In Publisher
     $tiaBasePath = "C:\Program Files\Siemens\Automation\Portal V21"
     $tiaNet48Path = "$tiaBasePath\PublicAPI\V21\net48"
-    $tiaPublisherPath = "$tiaBasePath\PublicAPI\V21.AddIn\Siemens.Engineering.AddIn.Publisher.exe"
+    $tiaPublisherPath = "$tiaBasePath\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe"
 
     $hasOpenness = Test-Path "$tiaNet48Path\Siemens.Engineering.Base.dll"
     Assert-Prerequisite `
@@ -151,7 +151,7 @@ function Check-Environment {
         -IsWarning $true
 
     # 5. Siemens TIA Openness Group Membership
-    if ($isWindows) {
+    if ($runningOnWindows) {
         try {
             $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
             $principal = [System.Security.Principal.WindowsPrincipal]$currentUser
@@ -196,7 +196,7 @@ function Sanitize-WorkspaceEnvironment {
             }
         }
         catch {
-            Write-CheckWarn "Could not stop process $procName: $_"
+            Write-CheckWarn "Could not stop process ${procName}: $_"
         }
     }
 
@@ -213,7 +213,7 @@ function Sanitize-WorkspaceEnvironment {
                 Write-CheckPass "Removed build artifact folder: $path"
             }
             catch {
-                Write-CheckWarn "Could not remove $path: $_"
+                Write-CheckWarn "Could not remove ${path}: $_"
             }
         }
     }
