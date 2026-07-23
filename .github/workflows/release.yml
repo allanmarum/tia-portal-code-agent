@@ -41,13 +41,20 @@ jobs:
 
       - name: Package TIA Portal Add-In
         shell: pwsh
+        env:
+          TIA_REQUIRE_SIGNING: "true"
+          TIA_SIGNING_CERT_PFX_BASE64: ${{ secrets.TIA_SIGNING_CERT_PFX_BASE64 }}
+          TIA_SIGNING_CERT_PASSWORD: ${{ secrets.TIA_SIGNING_CERT_PASSWORD }}
+          TIA_SIGNING_CERT_THUMBPRINT: ${{ secrets.TIA_SIGNING_CERT_THUMBPRINT }}
         run: |
-          ./build.ps1 pack-addin
+          ./build.ps1 pack-addin -RequireSigning
 
-      - name: Verify TIA Portal Add-In package
+      - name: Verify TIA Portal Add-In package signature and contents
         shell: pwsh
+        env:
+          TIA_REQUIRE_SIGNING: "true"
         run: |
-          ./build.ps1 verify-addin
+          ./build.ps1 verify-addin -RequireSigning
 
       - name: Package CLI global tool
         shell: pwsh

@@ -145,6 +145,37 @@ public sealed class RepositoryHealthAndSecurityTests
         content.Should().Contain("v*", "Release workflow must trigger on version tag pushes");
     }
 
+    [Fact]
+    public void Release_workflow_enforces_mandatory_release_signing_and_signature_verification()
+    {
+        var root = FindRepositoryRoot();
+        var releaseWorkflowPath = Path.Combine(root, ".github", "workflows", "release.yml");
+
+        File.Exists(releaseWorkflowPath).Should().BeTrue(".github/workflows/release.yml must exist");
+
+        var content = File.ReadAllText(releaseWorkflowPath);
+        content.Should().Contain("TIA_REQUIRE_SIGNING", "Release workflow must set TIA_REQUIRE_SIGNING environment variable");
+        content.Should().Contain("-RequireSigning", "Release workflow must pass -RequireSigning to build.ps1");
+        content.Should().Contain("TIA_SIGNING_CERT_PFX_BASE64", "Release workflow must inject PFX base64 secret");
+        content.Should().Contain("TIA_SIGNING_CERT_PASSWORD", "Release workflow must inject PFX password secret");
+    }
+
+    [Fact]
+    public void Release_signing_documentation_exists_and_covers_required_topics()
+    {
+        var root = FindRepositoryRoot();
+        var signingDocPath = Path.Combine(root, "docs", "SIGNING.md");
+
+        File.Exists(signingDocPath).Should().BeTrue("docs/SIGNING.md must exist");
+
+        var content = File.ReadAllText(signingDocPath);
+        content.Should().Contain("Mandatory Signing", "SIGNING.md must define mandatory signing policy");
+        content.Should().Contain("Automated Signature Verification", "SIGNING.md must document signature verification");
+        content.Should().Contain("Secret Management", "SIGNING.md must document secret handling");
+        content.Should().Contain("Certificate Rotation Procedure", "SIGNING.md must document certificate rotation");
+        content.Should().Contain("Development vs. Release", "SIGNING.md must document separation of development and release packaging");
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

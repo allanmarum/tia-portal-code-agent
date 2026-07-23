@@ -13,7 +13,9 @@ param(
     [string]$Command = "help",
 
     [ValidatePattern('^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+|-dev)?$')]
-    [string]$Version
+    [string]$Version,
+
+    [switch]$RequireSigning
 )
 
 $ErrorActionPreference = "Stop"
@@ -84,9 +86,20 @@ function Invoke-Dotnet {
     if ($LASTEXITCODE -ne 0) { throw "dotnet command failed with exit code $LASTEXITCODE" }
 }
 
+function Ensure-OpcSigner {
+    $opcSignerExe = "$Root\tools\OpcSigner\bin\$Config\net48\OpcSigner.exe"
+    if (-not (Test-Path $opcSignerExe)) {
+        Write-Info "Building OpcSigner tool..."
+        Invoke-Dotnet @("build", "$Root\tools\OpcSigner\OpcSigner.csproj", "--configuration", $Config, "--verbosity", "quiet")
+    }
+}
+
 function Invoke-MsBuildTarget {
-    param([Parameter(Mandatory = $true)][string]$Target)
-    & dotnet msbuild "$Root\src\TiaAgent.AddIn\TiaAgent.AddIn.csproj" -t:$Target -p:Configuration=$Config @MsBuildVersionArguments
+    param(
+        [Parameter(Mandatory = $true)][string]$Target,
+        [string[]]$ExtraArguments = @()
+    )
+    & dotnet msbuild "$Root\src\TiaAgent.AddIn\TiaAgent.AddIn.csproj" -t:$Target -p:Configuration=$Config @MsBuildVersionArguments @ExtraArguments
     if ($LASTEXITCODE -ne 0) { throw "MSBuild target '$Target' failed with exit code $LASTEXITCODE" }
 }
 
@@ -113,7 +126,13 @@ function Invoke-Test {
 
 function Invoke-PackAddIn {
     Write-Header "PACK ADD-IN $ProductVersion"
-    Invoke-MsBuildTarget -Target "PackAddIn"
+    Ensure-OpcSigner
+    $extraArgs = @()
+    if ($RequireSigning -or $env:TIA_REQUIRE_SIGNING -eq "true" -or ($ProductVersion -match '^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$' -and $ProductVersion -notlike '*-dev')) {
+        $extraArgs += "-p:RequireSigning=true"
+        $env:TIA_REQUIRE_SIGNING = "true"
+    }
+    Invoke-MsBuildTarget -Target "PackAddIn" -ExtraArguments $extraArgs
 }
 
 function Invoke-PackCli {
@@ -269,7 +288,13 @@ function Invoke-PackCli {
 
 function Invoke-VerifyAddIn {
     Write-Header "VERIFY ADD-IN $ProductVersion"
-    Invoke-MsBuildTarget -Target "VerifyAddIn"
+    Ensure-OpcSigner
+    $extraArgs = @()
+    if ($RequireSigning -or $env:TIA_REQUIRE_SIGNING -eq "true" -or ($ProductVersion -match '^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$' -and $ProductVersion -notlike '*-dev')) {
+        $extraArgs += "-p:RequireSigning=true"
+        $env:TIA_REQUIRE_SIGNING = "true"
+    }
+    Invoke-MsBuildTarget -Target "VerifyAddIn" -ExtraArguments $extraArgs
 }
 
 function Invoke-InstallDev {
