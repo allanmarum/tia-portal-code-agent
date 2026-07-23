@@ -36,6 +36,7 @@ public static class Program
             "status" => HandleStatus(commandArgs),
             "doctor" => HandleDoctor(commandArgs),
             "config" or "configuration" => HandleConfig(commandArgs),
+            "channel" => HandleChannel(commandArgs),
             "runtime" or "runtimes" => HandleRuntime(commandArgs),
             "version" => HandleVersion(commandArgs),
             "verify-release" or "verify" => HandleVerifyRelease(commandArgs),
@@ -364,6 +365,56 @@ public static class Program
         return ConfigCommand.Execute(options);
     }
 
+    private static int HandleChannel(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowChannelHelp();
+            return 0;
+        }
+
+        var options = new ChannelOptions();
+        var positional = new List<string>();
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--force", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-f", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Force = true;
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (arg.StartsWith('-'))
+            {
+                Console.Error.WriteLine($"Unknown option for channel: '{arg}'");
+                ShowChannelHelp();
+                return 1;
+            }
+            else
+            {
+                positional.Add(arg);
+            }
+        }
+
+        if (positional.Count > 0)
+        {
+            options.Subcommand = positional[0];
+        }
+        if (positional.Count > 1)
+        {
+            options.Channel = positional[1];
+        }
+
+        return ChannelCommand.Execute(options);
+    }
+
     private static int HandleRuntime(string[] args)
     {
         if (args.Any(IsHelpOption))
@@ -682,6 +733,7 @@ public static class Program
         Console.WriteLine("  status         Show runtime status and health information");
         Console.WriteLine("  doctor         Run environment and setup diagnostics");
         Console.WriteLine("  config         View or modify user configuration settings");
+        Console.WriteLine("  channel        View or change the update channel (stable, rc, beta, alpha)");
         Console.WriteLine("  runtime        Manage and validate agent runtimes (opencode, mimo, claude)");
         Console.WriteLine("  version        Show detailed version information");
         Console.WriteLine("  verify-release Verify release manifest, SBOM, and checksums in an artifact directory");
@@ -754,6 +806,21 @@ public static class Program
         Console.WriteLine("  --user-addins-dir <dir>  Path to custom Siemens UserAddIns directory");
         Console.WriteLine("  --json                   Output result in JSON format");
         Console.WriteLine("  -h, --help               Show help for activate command");
+    }
+
+    private static void ShowChannelHelp()
+    {
+        Console.WriteLine("Usage: tia-agent channel [subcommand] [options]");
+        Console.WriteLine();
+        Console.WriteLine("Subcommands:");
+        Console.WriteLine("  show                     Display current update channel and version info (default)");
+        Console.WriteLine("  set <channel>            Set the update channel (stable, rc, beta, alpha)");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  -f, --force              Force channel downgrade (e.g. stable -> rc)");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  --json                   Output in JSON format");
+        Console.WriteLine("  -h, --help               Show help for channel command");
     }
 
     private static void ShowRuntimeHelp()

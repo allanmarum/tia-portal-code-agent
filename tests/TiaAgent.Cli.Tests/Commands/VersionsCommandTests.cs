@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -12,7 +11,7 @@ using Xunit;
 
 namespace TiaAgent.Cli.Tests.Commands;
 
-public sealed class UpdateCommandTests : IDisposable
+public sealed class VersionsCommandTests : IDisposable
 {
     private readonly string _tempDirectory;
     private readonly string _customRoot;
@@ -20,9 +19,9 @@ public sealed class UpdateCommandTests : IDisposable
     private readonly string _payloadDirV1;
     private readonly string _payloadDirV2;
 
-    public UpdateCommandTests()
+    public VersionsCommandTests()
     {
-        _tempDirectory = Path.Combine(Path.GetTempPath(), "UpdateCommandTests_" + Guid.NewGuid().ToString("N"));
+        _tempDirectory = Path.Combine(Path.GetTempPath(), "VersionsCommandTests_" + Guid.NewGuid().ToString("N"));
         _customRoot = Path.Combine(_tempDirectory, "TiaAgentRoot");
         _userAddInsDir = Path.Combine(_tempDirectory, "UserAddIns");
         _payloadDirV1 = Path.Combine(_tempDirectory, "payload_v1");
@@ -48,157 +47,192 @@ public sealed class UpdateCommandTests : IDisposable
     {
         if (Directory.Exists(_tempDirectory))
         {
-            try
-            {
-                Directory.Delete(_tempDirectory, recursive: true);
-            }
-            catch (IOException ex)
-            {
-                Debug.WriteLine($"Failed to remove test directory '{_tempDirectory}': {ex}");
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                Debug.WriteLine($"Failed to remove test directory '{_tempDirectory}': {ex}");
-            }
+            try { Directory.Delete(_tempDirectory, recursive: true); } catch { }
         }
-
         GC.SuppressFinalize(this);
     }
 
     [Fact]
-    public void UpdateCommand_WithTargetInstalledVersion_UpdatesActiveVersionSuccessfully()
+    public void VersionsCommand_List_OutputsInstalledVersionsAndActiveMarker()
     {
         InstallVersion("0.2.0-beta.1", _payloadDirV1);
-        InstallVersion("0.2.0-rc.1", _payloadDirV2);
-        ActivateVersion("0.2.0-beta.1");
+        UpdateVersion("0.2.0-rc.1", _payloadDirV2);
 
-        var updateOptions = new UpdateOptions
+        var options = new VersionsOptions
         {
-            Version = "0.2.0-rc.1",
+            Subcommand = "list",
             CustomRoot = _customRoot,
             UserAddInsDir = _userAddInsDir
         };
 
         using var stdout = new StringWriter();
-        using var stderr = new StringWriter();
-
-        var exitCode = UpdateCommand.Execute(updateOptions, stdout, stderr);
+        var exitCode = VersionsCommand.Execute(options, stdout, TextWriter.Null);
 
         exitCode.Should().Be(0);
-        stderr.ToString().Should().BeEmpty();
-        stdout.ToString().Should().Contain("Successfully updated TIA Agent to version '0.2.0-rc.1'");
-
-        var layout = new TiaAgentLayout(_customRoot);
-        var current = ManifestStore.Read<CurrentManifest>(layout.CurrentManifestPath);
-        current.ActiveVersion.Should().Be("0.2.0-rc.1");
-        current.PreviousVersion.Should().Be("0.2.0-beta.1");
-        current.ActivatedBy.Should().Be("tia-agent update");
+        var output = stdout.ToString();
+        output.Should().Contain("0.2.0-rc.1");
+        output.Should().Contain("[active]");
+        output.Should().Contain("0.2.0-beta.1");
+        output.Should().Contain("[rollback candidate]");
     }
 
     [Fact]
-    public void UpdateCommand_WithPayloadDirectory_InstallsAndUpdatesToPayloadVersion()
+    public void VersionsCommand_RemoveActiveVersionWithoutForce_Fails()
     {
         InstallVersion("0.2.0-beta.1", _payloadDirV1);
 
-        var updateOptions = new UpdateOptions
+        var options = new VersionsOptions
         {
-            PayloadDir = _payloadDirV2,
-            CustomRoot = _customRoot,
-            UserAddInsDir = _userAddInsDir
-        };
-
-        using var stdout = new StringWriter();
-        using var stderr = new StringWriter();
-
-        var exitCode = UpdateCommand.Execute(updateOptions, stdout, stderr);
-
-        exitCode.Should().Be(0);
-
-        var layout = new TiaAgentLayout(_customRoot);
-        var current = ManifestStore.Read<CurrentManifest>(layout.CurrentManifestPath);
-        current.ActiveVersion.Should().Be("0.2.0-rc.1");
-        current.PreviousVersion.Should().Be("0.2.0-beta.1");
-    }
-
-    [Fact]
-    public void UpdateCommand_AlreadyActiveVersionWithoutForce_ReportsAlreadyActive()
-    {
-        InstallVersion("0.2.0-beta.1", _payloadDirV1);
-
-        var updateOptions = new UpdateOptions
-        {
+            Subcommand = "remove",
             Version = "0.2.0-beta.1",
             CustomRoot = _customRoot,
             UserAddInsDir = _userAddInsDir
         };
 
         using var stdout = new StringWriter();
-        var exitCode = UpdateCommand.Execute(updateOptions, stdout, TextWriter.Null);
-
-        exitCode.Should().Be(0);
-        stdout.ToString().Should().Contain("already active");
-    }
-
-    [Fact]
-    public void UpdateCommand_AlreadyActiveVersionWithForce_ReactivatesVersion()
-    {
-        InstallVersion("0.2.0-beta.1", _payloadDirV1);
-
-        var updateOptions = new UpdateOptions
-        {
-            Version = "0.2.0-beta.1",
-            CustomRoot = _customRoot,
-            UserAddInsDir = _userAddInsDir,
-            Force = true
-        };
-
-        using var stdout = new StringWriter();
-        var exitCode = UpdateCommand.Execute(updateOptions, stdout, TextWriter.Null);
-
-        exitCode.Should().Be(0);
-        stdout.ToString().Should().Contain("Successfully updated TIA Agent to version '0.2.0-beta.1'");
-    }
-
-    [Fact]
-    public void UpdateCommand_UninstalledVersionNoPayload_ReturnsError()
-    {
-        var updateOptions = new UpdateOptions
-        {
-            Version = "9.9.9",
-            CustomRoot = _customRoot
-        };
-
         using var stderr = new StringWriter();
-        var exitCode = UpdateCommand.Execute(updateOptions, TextWriter.Null, stderr);
+
+        var exitCode = VersionsCommand.Execute(options, stdout, stderr);
 
         exitCode.Should().Be(1);
-        stderr.ToString().Should().Contain("Version '9.9.9' is not installed and no valid payload was found");
+        stderr.ToString().Should().Contain("Cannot remove version '0.2.0-beta.1' because it is currently active.");
     }
 
     [Fact]
-    public void UpdateCommand_JsonOutput_ReturnsStructuredReport()
+    public void VersionsCommand_RemoveRollbackCandidateWithoutForce_Fails()
     {
         InstallVersion("0.2.0-beta.1", _payloadDirV1);
-        InstallVersion("0.2.0-rc.1", _payloadDirV2);
-        ActivateVersion("0.2.0-beta.1");
+        UpdateVersion("0.2.0-rc.1", _payloadDirV2);
 
-        var updateOptions = new UpdateOptions
+        var options = new VersionsOptions
         {
-            Version = "0.2.0-rc.1",
+            Subcommand = "remove",
+            Version = "0.2.0-beta.1",
+            CustomRoot = _customRoot,
+            UserAddInsDir = _userAddInsDir
+        };
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        var exitCode = VersionsCommand.Execute(options, stdout, stderr);
+
+        exitCode.Should().Be(1);
+        stderr.ToString().Should().Contain("Cannot remove version '0.2.0-beta.1' because it is the only known-good rollback version.");
+    }
+
+    [Fact]
+    public void VersionsCommand_RemoveRollbackCandidateWithForce_Succeeds()
+    {
+        InstallVersion("0.2.0-beta.1", _payloadDirV1);
+        UpdateVersion("0.2.0-rc.1", _payloadDirV2);
+
+        var options = new VersionsOptions
+        {
+            Subcommand = "remove",
+            Version = "0.2.0-beta.1",
+            Force = true,
+            CustomRoot = _customRoot,
+            UserAddInsDir = _userAddInsDir
+        };
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        var exitCode = VersionsCommand.Execute(options, stdout, stderr);
+
+        exitCode.Should().Be(0);
+        stdout.ToString().Should().Contain("Successfully removed TIA Agent version '0.2.0-beta.1'");
+
+        var layout = new TiaAgentLayout(_customRoot);
+        var installations = ManifestStore.Read<InstallationsManifest>(layout.InstallationsManifestPath);
+        installations.Versions.Should().NotContainKey("0.2.0-beta.1");
+    }
+
+    [Fact]
+    public void VersionsCommand_ListJsonOutput_ReturnsStructuredReport()
+    {
+        InstallVersion("0.2.0-beta.1", _payloadDirV1);
+        UpdateVersion("0.2.0-rc.1", _payloadDirV2);
+
+        var options = new VersionsOptions
+        {
+            Subcommand = "list",
             CustomRoot = _customRoot,
             UserAddInsDir = _userAddInsDir,
             Json = true
         };
 
         using var stdout = new StringWriter();
-        var exitCode = UpdateCommand.Execute(updateOptions, stdout, TextWriter.Null);
+        var exitCode = VersionsCommand.Execute(options, stdout, TextWriter.Null);
 
         exitCode.Should().Be(0);
         var json = stdout.ToString();
         using var doc = JsonDocument.Parse(json);
-        doc.RootElement.GetProperty("success").GetBoolean().Should().BeTrue();
         doc.RootElement.GetProperty("activeVersion").GetString().Should().Be("0.2.0-rc.1");
-        doc.RootElement.GetProperty("previousVersion").GetString().Should().Be("0.2.0-beta.1");
+        doc.RootElement.GetProperty("rollbackVersion").GetString().Should().Be("0.2.0-beta.1");
+        var installed = doc.RootElement.GetProperty("installedVersions");
+        installed.GetArrayLength().Should().Be(2);
+    }
+
+    [Fact]
+    public void VersionsCommand_RemoveNonExistentVersion_Fails()
+    {
+        InstallVersion("0.2.0-beta.1", _payloadDirV1);
+
+        var options = new VersionsOptions
+        {
+            Subcommand = "remove",
+            Version = "9.9.9",
+            CustomRoot = _customRoot,
+            UserAddInsDir = _userAddInsDir
+        };
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        var exitCode = VersionsCommand.Execute(options, stdout, stderr);
+
+        exitCode.Should().Be(1);
+        stderr.ToString().Should().Contain("Version '9.9.9' is not installed.");
+    }
+
+    [Fact]
+    public void VersionsCommand_RemoveWithoutVersion_Fails()
+    {
+        InstallVersion("0.2.0-beta.1", _payloadDirV1);
+
+        var options = new VersionsOptions
+        {
+            Subcommand = "remove",
+            CustomRoot = _customRoot,
+            UserAddInsDir = _userAddInsDir
+        };
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        var exitCode = VersionsCommand.Execute(options, stdout, stderr);
+
+        exitCode.Should().Be(1);
+        stderr.ToString().Should().Contain("Version to remove must be specified.");
+    }
+
+    [Fact]
+    public void VersionsCommand_ListEmpty_ShowsNoVersionsMessage()
+    {
+        var options = new VersionsOptions
+        {
+            Subcommand = "list",
+            CustomRoot = _customRoot,
+            UserAddInsDir = _userAddInsDir
+        };
+
+        using var stdout = new StringWriter();
+        var exitCode = VersionsCommand.Execute(options, stdout, TextWriter.Null);
+
+        exitCode.Should().Be(0);
+        stdout.ToString().Should().Contain("No TIA Agent versions are currently installed.");
     }
 
     private void InstallVersion(string version, string payloadDir)
@@ -213,15 +247,16 @@ public sealed class UpdateCommandTests : IDisposable
         InstallCommand.Execute(installOptions, TextWriter.Null, TextWriter.Null);
     }
 
-    private void ActivateVersion(string version)
+    private void UpdateVersion(string version, string payloadDir)
     {
-        var activateOptions = new ActivateOptions
+        var updateOptions = new UpdateOptions
         {
             Version = version,
+            PayloadDir = payloadDir,
             CustomRoot = _customRoot,
             UserAddInsDir = _userAddInsDir
         };
-        ActivateCommand.Execute(activateOptions, TextWriter.Null, TextWriter.Null);
+        UpdateCommand.Execute(updateOptions, TextWriter.Null, TextWriter.Null);
     }
 
     private static void CreateDummyPayload(string payloadDir, string version)

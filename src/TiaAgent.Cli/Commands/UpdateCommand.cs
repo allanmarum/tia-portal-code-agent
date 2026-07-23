@@ -3,6 +3,8 @@ using System.IO;
 using System.Text.Json;
 using TiaAgent.Cli.Layout;
 using TiaAgent.Cli.Payload;
+using TiaAgent.Cli.Release;
+using TiaAgent.Contracts.Runtime;
 
 namespace TiaAgent.Cli.Commands;
 
@@ -98,6 +100,46 @@ public static class UpdateCommand
         if (string.IsNullOrWhiteSpace(targetVersion) && payloadManifest != null)
         {
             targetVersion = payloadManifest.ProductVersion;
+        }
+
+        // Channel validation: warn if the target version is incompatible with the configured channel
+        if (!string.IsNullOrWhiteSpace(targetVersion))
+        {
+            TiaAgentConfig config;
+            try
+            {
+                config = ManifestStore.Read<TiaAgentConfig>(layout.ConfigPath);
+            }
+            catch
+            {
+                config = new TiaAgentConfig();
+            }
+
+            var channel = ChannelUtils.NormalizeChannel(config.UpdateChannel) ?? "stable";
+            if (!ChannelUtils.IsVersionCompatibleWithChannel(targetVersion, channel))
+            {
+                var versionChannel = ReleaseStore.ResolveChannel(targetVersion);
+                var err = $"Version '{targetVersion}' (channel: {versionChannel}) is not compatible with the configured update channel '{channel}'. Use --force to override.";
+                if (options.Force)
+                {
+                    if (!options.Json)
+                    {
+                        stderr.WriteLine($"WARNING: {err}");
+                    }
+                }
+                else
+                {
+                    if (options.Json)
+                    {
+                        stdout.WriteLine(JsonSerializer.Serialize(new UpdateReport { Success = false, Error = err }, s_jsonOptions));
+                    }
+                    else
+                    {
+                        stderr.WriteLine(err);
+                    }
+                    return 1;
+                }
+            }
         }
 
         if (string.IsNullOrWhiteSpace(targetVersion))

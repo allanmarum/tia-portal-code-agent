@@ -14,6 +14,12 @@ public sealed class TiaAgentConfig
     public string DefaultRuntime { get; set; } = "opencode";
 
     /// <summary>
+    /// The update channel that controls which versions are eligible for updates.
+    /// Valid values: "stable", "rc", "beta", "alpha". Default: "stable".
+    /// </summary>
+    public string UpdateChannel { get; set; } = "stable";
+
+    /// <summary>
     /// Per-runtime configuration entries.
     /// </summary>
     public Dictionary<string, RuntimeEntryConfig> Runtimes { get; set; } = new Dictionary<string, RuntimeEntryConfig>();

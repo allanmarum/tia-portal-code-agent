@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using TiaAgent.Cli.Layout;
+using TiaAgent.Cli.Release;
 using TiaAgent.Contracts.Runtime;
 
 namespace TiaAgent.Cli.Commands;
@@ -69,7 +70,10 @@ public static class DoctorCommand
         // 2. Layout & Manifests Check
         CheckLayoutAndManifests(layout, report);
 
-        // 3. Siemens TIA Portal V21 & Add-In Check
+        // 3. Update Channel Check
+        CheckUpdateChannel(layout, report);
+
+        // 4. Siemens TIA Portal V21 & Add-In Check
         CheckSiemensIntegration(options.UserAddInsDir, report);
 
         // 4. Runtime & MCP Server Availability Check
@@ -295,6 +299,78 @@ public static class DoctorCommand
         }
     }
 
+    private static void CheckUpdateChannel(TiaAgentLayout layout, DoctorReport report)
+    {
+        TiaAgentConfig? config = null;
+        if (File.Exists(layout.ConfigPath))
+        {
+            try
+            {
+                config = ManifestStore.Read<TiaAgentConfig>(layout.ConfigPath);
+            }
+            catch { }
+        }
+
+        var configuredChannel = config?.UpdateChannel;
+        var normalizedChannel = ChannelUtils.NormalizeChannel(configuredChannel);
+
+        if (normalizedChannel != null)
+        {
+            CurrentManifest? current = null;
+            try
+            {
+                current = ManifestStore.Read<CurrentManifest>(layout.CurrentManifestPath);
+            }
+            catch { }
+
+            var activeVersion = current?.ActiveVersion;
+            var activeChannel = !string.IsNullOrWhiteSpace(activeVersion)
+                ? ReleaseStore.ResolveChannel(activeVersion)
+                : null;
+
+            var details = $"Update channel: {normalizedChannel}";
+            if (!string.IsNullOrWhiteSpace(activeVersion))
+            {
+                details += $", active version: {activeVersion} (channel: {activeChannel})";
+            }
+
+            // Warn if active version is incompatible with configured channel
+            if (!string.IsNullOrWhiteSpace(activeVersion) &&
+                !ChannelUtils.IsVersionCompatibleWithChannel(activeVersion, normalizedChannel))
+            {
+                report.Checks.Add(new DoctorCheckResult
+                {
+                    Category = "Channel",
+                    Name = "Update Channel",
+                    Status = "WARN",
+                    Details = details + $". WARNING: Active version '{activeVersion}' (channel: {activeChannel}) is not compatible with configured channel '{normalizedChannel}'.",
+                    Recommendation = $"Run 'tia-agent update' to get a version compatible with the '{normalizedChannel}' channel, or change channel with 'tia-agent channel set'."
+                });
+            }
+            else
+            {
+                report.Checks.Add(new DoctorCheckResult
+                {
+                    Category = "Channel",
+                    Name = "Update Channel",
+                    Status = "OK",
+                    Details = details
+                });
+            }
+        }
+        else
+        {
+            report.Checks.Add(new DoctorCheckResult
+            {
+                Category = "Channel",
+                Name = "Update Channel",
+                Status = "WARN",
+                Details = $"Update channel not configured or invalid ('{configuredChannel ?? "(null)"}'). Defaulting to 'stable'.",
+                Recommendation = "Run 'tia-agent channel set <channel>' to configure update channel."
+            });
+        }
+    }
+
     private static void CheckSiemensIntegration(string? customUserAddInsDir, DoctorReport report)
     {
         var tiaPublicApiDir = Environment.GetEnvironmentVariable("TiaPublicApiDir");
@@ -503,6 +579,13 @@ public static class DoctorCommand
     {
         stdout.WriteLine($"TIA Agent Doctor Diagnostics (v{report.ProductVersion})");
         stdout.WriteLine($"Root Path: {layout.RootPath}");
+
+        // Show channel summary
+        var channelCheck = report.Checks.FirstOrDefault(c => c.Name == "Update Channel");
+        if (channelCheck != null)
+        {
+            stdout.WriteLine($"Channel: {channelCheck.Details}");
+        }
         stdout.WriteLine();
 
         foreach (var check in report.Checks)
