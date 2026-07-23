@@ -9,7 +9,7 @@
 #>
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("build", "test", "pack-addin", "pack-cli", "verify-addin", "install-dev", "all", "clean", "mcp", "help")]
+    [ValidateSet("build", "test", "pack-addin", "pack-cli", "verify-addin", "pack-release", "verify-release", "install-dev", "all", "clean", "mcp", "help")]
     [string]$Command = "help",
 
     [ValidatePattern('^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+|-dev)?$')]
@@ -297,6 +297,30 @@ function Invoke-VerifyAddIn {
     Invoke-MsBuildTarget -Target "VerifyAddIn" -ExtraArguments $extraArgs
 }
 
+function Invoke-PackRelease {
+    Write-Header "PACK RELEASE METADATA $ProductVersion"
+    $outputDir = "$Root\artifacts"
+    if (-not (Test-Path $outputDir)) { New-Item -ItemType Directory -Path $outputDir -Force | Out-Null }
+
+    Write-Info "Generating release manifest, SBOM, and SHA256SUMS..."
+    Invoke-Dotnet @("run", "--project", "$Root\src\TiaAgent.Cli\TiaAgent.Cli.csproj", "--configuration", $Config, "--", "generate-release-metadata", "--dir", $outputDir, "--version", $ProductVersion, "--commit", $CommitSha, "--repo-root", $Root)
+
+    Write-Ok "Release metadata generated at $outputDir"
+}
+
+function Invoke-VerifyRelease {
+    Write-Header "VERIFY RELEASE METADATA $ProductVersion"
+    $outputDir = "$Root\artifacts"
+    if (-not (Test-Path $outputDir)) {
+        throw "Release artifacts directory not found: $outputDir"
+    }
+
+    Write-Info "Verifying release manifest, SBOM, and SHA256SUMS..."
+    Invoke-Dotnet @("run", "--project", "$Root\src\TiaAgent.Cli\TiaAgent.Cli.csproj", "--configuration", $Config, "--", "verify-release", "--dir", $outputDir, "--version", $ProductVersion)
+
+    Write-Ok "Release metadata verification passed"
+}
+
 function Invoke-InstallDev {
     Write-Header "INSTALL DEV $ProductVersion"
     Invoke-MsBuildTarget -Target "InstallAddIn"
@@ -321,16 +345,18 @@ function Show-Help {
     Write-Host "Usage: .\build.ps1 <command> [-Version X.Y.Z[-channel.N]]"
     Write-Host ""
     Write-Host "Commands:"
-    Write-Host "  build         Compile the solution (no packaging or installation)"
-    Write-Host "  test          Run all tests"
-    Write-Host "  pack-addin    Package the TIA Portal Add-In (.addin)"
-    Write-Host "  pack-cli      Package the CLI global tool (.nupkg)"
-    Write-Host "  verify-addin  Verify the .addin package contents"
-    Write-Host "  install-dev   Deploy the .addin to TIA Portal UserAddIns"
-    Write-Host "  all           Build, test, pack-addin, pack-cli, and verify-addin in sequence"
-    Write-Host "  clean         Remove all build artifacts"
-    Write-Host "  mcp           Show MCP server installation instructions"
-    Write-Host "  help          Show this help message"
+    Write-Host "  build           Compile the solution (no packaging or installation)"
+    Write-Host "  test            Run all tests"
+    Write-Host "  pack-addin      Package the TIA Portal Add-In (.addin)"
+    Write-Host "  pack-cli        Package the CLI global tool (.nupkg)"
+    Write-Host "  pack-release    Generate release manifest, SBOM, and SHA256SUMS"
+    Write-Host "  verify-addin    Verify the .addin package contents"
+    Write-Host "  verify-release  Verify release manifest, SBOM, and SHA256SUMS"
+    Write-Host "  install-dev     Deploy the .addin to TIA Portal UserAddIns"
+    Write-Host "  all             Build, test, pack-addin, pack-cli, verify-addin, pack-release, verify-release"
+    Write-Host "  clean           Remove all build artifacts"
+    Write-Host "  mcp             Show MCP server installation instructions"
+    Write-Host "  help            Show this help message"
     Write-Host ""
     Write-Host "Resolved version: $ProductVersion"
 }
@@ -340,10 +366,12 @@ switch ($Command) {
     "test" { Invoke-Test }
     "pack-addin" { Invoke-PackAddIn }
     "pack-cli" { Invoke-PackCli }
+    "pack-release" { Invoke-PackRelease }
     "verify-addin" { Invoke-VerifyAddIn }
+    "verify-release" { Invoke-VerifyRelease }
     "install-dev" { Invoke-InstallDev }
     "mcp" { Invoke-Mcp }
     "clean" { Invoke-Clean }
-    "all" { Invoke-Build; Invoke-Test; Invoke-PackAddIn; Invoke-PackCli; Invoke-VerifyAddIn }
+    "all" { Invoke-Build; Invoke-Test; Invoke-PackAddIn; Invoke-PackCli; Invoke-VerifyAddIn; Invoke-PackRelease; Invoke-VerifyRelease }
     default { Show-Help }
 }
