@@ -226,7 +226,7 @@ public sealed class RepositoryHealthAndSecurityTests
     }
 
     [Fact]
-    public void Release_workflow_fails_fast_when_nuget_api_key_missing()
+    public void Release_workflow_uses_nuget_trusted_publishing_via_oidc()
     {
         var root = FindRepositoryRoot();
         var workflowPath = Path.Combine(root, ".github", "workflows", "release.yml");
@@ -234,8 +234,10 @@ public sealed class RepositoryHealthAndSecurityTests
         File.Exists(workflowPath).Should().BeTrue(".github/workflows/release.yml must exist");
 
         var content = File.ReadAllText(workflowPath);
-        content.Should().Contain("Validate NuGet API key",
-            "Release workflow must validate NUGET_API_KEY before creating any external release artifacts");
+        content.Should().Contain("id-token: write",
+            "Release workflow must request id-token:write permission for NuGet trusted publishing");
+        content.Should().NotContain("NUGET_API_KEY",
+            "Release workflow must not use NUGET_API_KEY — use OIDC trusted publishing instead");
     }
 
     private static string FindRepositoryRoot()

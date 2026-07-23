@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write  # Required for NuGet trusted publishing (OIDC)
 
 concurrency:
   group: release-${{ github.ref }}
@@ -213,16 +214,6 @@ jobs:
           echo "=== .addin files ==="
           ls -la artifacts/*.addin 2>/dev/null || echo "No .addin files"
 
-      - name: Validate NuGet API key
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          if [[ -z "${NUGET_API_KEY:-}" ]]; then
-            echo "::error::NUGET_API_KEY is required for an official release. Configure this secret in repository settings."
-            exit 1
-          fi
-          echo "NUGET_API_KEY is present."
-
       - name: Check for existing release (idempotency guard)
         id: check-existing
         env:
@@ -292,8 +283,6 @@ jobs:
 
       - name: Publish CLI to NuGet
         if: steps.check-nuget.outputs.exists != 'true'
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -304,9 +293,8 @@ jobs:
             exit 1
           fi
 
-          echo "Publishing $NUPKG to NuGet.org..."
+          echo "Publishing $NUPKG to NuGet.org (trusted publishing via OIDC)..."
           dotnet nuget push "$NUPKG" \
-            --api-key "$NUGET_API_KEY" \
             --source "https://api.nuget.org/v3/index.json" \
             --skip-duplicate
 
