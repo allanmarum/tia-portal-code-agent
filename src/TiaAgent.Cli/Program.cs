@@ -29,6 +29,8 @@ public static class Program
             "install" => HandleInstall(commandArgs),
             "activate" => HandleActivate(commandArgs),
             "uninstall" => HandleUninstall(commandArgs),
+            "update" or "upgrade" => HandleUpdate(commandArgs),
+            "rollback" or "downgrade" => HandleRollback(commandArgs),
             "start" or "run" => HandleStart(commandArgs),
             "stop" => HandleStop(commandArgs),
             "status" => HandleStatus(commandArgs),
@@ -171,6 +173,104 @@ public static class Program
         }
 
         return UninstallCommand.Execute(options);
+    }
+
+    private static int HandleUpdate(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowUpdateHelp();
+            return 0;
+        }
+
+        var options = new UpdateOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--version", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.Version = args[++i];
+            }
+            else if (string.Equals(arg, "--payload-dir", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.PayloadDir = args[++i];
+            }
+            else if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--user-addins-dir", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.UserAddInsDir = args[++i];
+            }
+            else if (string.Equals(arg, "--force", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-f", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Force = true;
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (!arg.StartsWith('-') && string.IsNullOrEmpty(options.Version))
+            {
+                options.Version = arg;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unknown option for update: '{arg}'");
+                ShowUpdateHelp();
+                return 1;
+            }
+        }
+
+        return UpdateCommand.Execute(options);
+    }
+
+    private static int HandleRollback(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowRollbackHelp();
+            return 0;
+        }
+
+        var options = new RollbackOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--version", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.Version = args[++i];
+            }
+            else if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--user-addins-dir", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.UserAddInsDir = args[++i];
+            }
+            else if (string.Equals(arg, "--force", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-f", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Force = true;
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (!arg.StartsWith('-') && string.IsNullOrEmpty(options.Version))
+            {
+                options.Version = arg;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unknown option for rollback: '{arg}'");
+                ShowRollbackHelp();
+                return 1;
+            }
+        }
+
+        return RollbackCommand.Execute(options);
     }
 
     private static int HandleDoctor(string[] args)
@@ -483,6 +583,8 @@ public static class Program
         Console.WriteLine("  install        Install TIA Agent version");
         Console.WriteLine("  activate       Activate installed TIA Agent version");
         Console.WriteLine("  uninstall      Uninstall TIA Agent version(s)");
+        Console.WriteLine("  update         Update TIA Agent installation to latest payload or specified version");
+        Console.WriteLine("  rollback       Roll back TIA Agent to previous installed version");
         Console.WriteLine("  start          Start and monitor runtime services (alias: run)");
         Console.WriteLine("  stop           Stop runtime services");
         Console.WriteLine("  status         Show runtime status and health information");
@@ -494,6 +596,33 @@ public static class Program
         Console.WriteLine("Options:");
         Console.WriteLine("  -v, --version  Show version information");
         Console.WriteLine("  -h, --help     Show help and usage information");
+    }
+
+    private static void ShowUpdateHelp()
+    {
+        Console.WriteLine("Usage: tia-agent update [version] [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --version <ver>          Specify version to update to");
+        Console.WriteLine("  --payload-dir <dir>      Path to custom payload directory");
+        Console.WriteLine("  -f, --force              Force re-installation or re-activation");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  --user-addins-dir <dir>  Path to custom Siemens UserAddIns directory");
+        Console.WriteLine("  --json                   Output result in JSON format");
+        Console.WriteLine("  -h, --help               Show help for update command");
+    }
+
+    private static void ShowRollbackHelp()
+    {
+        Console.WriteLine("Usage: tia-agent rollback [version] [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --version <ver>          Specify target version to roll back to");
+        Console.WriteLine("  -f, --force              Force rollback even if target version check fails");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  --user-addins-dir <dir>  Path to custom Siemens UserAddIns directory");
+        Console.WriteLine("  --json                   Output result in JSON format");
+        Console.WriteLine("  -h, --help               Show help for rollback command");
     }
 
     private static void ShowActivateHelp()

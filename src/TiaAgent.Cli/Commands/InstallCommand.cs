@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 using TiaAgent.Cli.Layout;
 using TiaAgent.Cli.Payload;
 
@@ -59,9 +60,43 @@ public static class InstallCommand
         {
             installations = ManifestStore.Read<InstallationsManifest>(layout.InstallationsManifestPath);
         }
-        catch
+        catch (FileNotFoundException)
         {
             installations = new InstallationsManifest();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            installations = new InstallationsManifest();
+        }
+        catch (JsonException)
+        {
+            installations = new InstallationsManifest();
+        }
+        catch (IOException)
+        {
+            installations = new InstallationsManifest();
+        }
+
+        string? previousVersion = null;
+        if (File.Exists(layout.CurrentManifestPath))
+        {
+            try
+            {
+                var existingCurrent = ManifestStore.Read<CurrentManifest>(layout.CurrentManifestPath);
+                if (!string.IsNullOrWhiteSpace(existingCurrent.ActiveVersion) &&
+                    !string.Equals(existingCurrent.ActiveVersion, targetVersion, StringComparison.OrdinalIgnoreCase))
+                {
+                    previousVersion = existingCurrent.ActiveVersion;
+                }
+                else
+                {
+                    previousVersion = existingCurrent.PreviousVersion;
+                }
+            }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+            catch (JsonException) { }
+            catch (IOException) { }
         }
 
         if (installations.Versions.ContainsKey(targetVersion) && Directory.Exists(versionDir) && !options.Force)
@@ -70,6 +105,7 @@ public static class InstallCommand
             {
                 SchemaVersion = 1,
                 ActiveVersion = targetVersion,
+                PreviousVersion = previousVersion,
                 ActivatedAt = DateTimeOffset.UtcNow,
                 ActivatedBy = "tia-agent install"
             };
@@ -112,6 +148,7 @@ public static class InstallCommand
         {
             SchemaVersion = 1,
             ActiveVersion = targetVersion,
+            PreviousVersion = previousVersion,
             ActivatedAt = DateTimeOffset.UtcNow,
             ActivatedBy = "tia-agent install"
         };
