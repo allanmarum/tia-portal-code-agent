@@ -30,7 +30,9 @@ public sealed class RuntimeCommandTests : IDisposable
     {
         if (Directory.Exists(_tempDirectory))
         {
-            try { Directory.Delete(_tempDirectory, recursive: true); } catch { }
+            try { Directory.Delete(_tempDirectory, recursive: true); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
         GC.SuppressFinalize(this);
     }
