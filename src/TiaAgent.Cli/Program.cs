@@ -38,6 +38,8 @@ public static class Program
             "config" or "configuration" => HandleConfig(commandArgs),
             "runtime" or "runtimes" => HandleRuntime(commandArgs),
             "version" => HandleVersion(commandArgs),
+            "verify-release" or "verify" => HandleVerifyRelease(commandArgs),
+            "generate-release-metadata" or "pack-release" => HandleGenerateReleaseMetadata(commandArgs),
             _ => HandleUnknown(args[0])
         };
     }
@@ -451,6 +453,96 @@ public static class Program
         return VersionCommand.Execute(options);
     }
 
+    private static int HandleVerifyRelease(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowVerifyReleaseHelp();
+            return 0;
+        }
+
+        var options = new VerifyReleaseOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--dir", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.Dir = args[++i];
+            }
+            else if (string.Equals(arg, "--version", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.Version = args[++i];
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (string.Equals(arg, "--verbose", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-v", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Verbose = true;
+            }
+            else if (!arg.StartsWith('-') && options.Dir == "artifacts")
+            {
+                options.Dir = arg;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unknown option for verify-release: '{arg}'");
+                ShowVerifyReleaseHelp();
+                return 1;
+            }
+        }
+
+        return VerifyReleaseCommand.Execute(options);
+    }
+
+    private static int HandleGenerateReleaseMetadata(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowGenerateReleaseMetadataHelp();
+            return 0;
+        }
+
+        var options = new GenerateReleaseMetadataOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--dir", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.Dir = args[++i];
+            }
+            else if (string.Equals(arg, "--version", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.Version = args[++i];
+            }
+            else if (string.Equals(arg, "--commit", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CommitSha = args[++i];
+            }
+            else if (string.Equals(arg, "--repo-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.RepoRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (!arg.StartsWith('-') && options.Dir == "artifacts")
+            {
+                options.Dir = arg;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unknown option for generate-release-metadata: '{arg}'");
+                ShowGenerateReleaseMetadataHelp();
+                return 1;
+            }
+        }
+
+        return GenerateReleaseMetadataCommand.Execute(options);
+    }
+
     private static int HandleStart(string[] args)
     {
         if (args.Any(IsHelpOption))
@@ -592,10 +684,36 @@ public static class Program
         Console.WriteLine("  config         View or modify user configuration settings");
         Console.WriteLine("  runtime        Manage and validate agent runtimes (opencode, mimo, claude)");
         Console.WriteLine("  version        Show detailed version information");
+        Console.WriteLine("  verify-release Verify release manifest, SBOM, and checksums in an artifact directory");
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  -v, --version  Show version information");
         Console.WriteLine("  -h, --help     Show help and usage information");
+    }
+
+    private static void ShowVerifyReleaseHelp()
+    {
+        Console.WriteLine("Usage: tia-agent verify-release [directory] [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --dir <dir>              Path to release artifacts directory (default: artifacts)");
+        Console.WriteLine("  --version <ver>          Expected product version");
+        Console.WriteLine("  --json                   Output result in JSON format");
+        Console.WriteLine("  -v, --verbose            Show detailed artifact information");
+        Console.WriteLine("  -h, --help               Show help for verify-release command");
+    }
+
+    private static void ShowGenerateReleaseMetadataHelp()
+    {
+        Console.WriteLine("Usage: tia-agent generate-release-metadata [directory] [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --dir <dir>              Path to release artifacts directory (default: artifacts)");
+        Console.WriteLine("  --version <ver>          Specify release product version");
+        Console.WriteLine("  --commit <sha>           Specify git commit SHA");
+        Console.WriteLine("  --repo-root <path>       Path to repository root");
+        Console.WriteLine("  --json                   Output manifest JSON format");
+        Console.WriteLine("  -h, --help               Show help for generate-release-metadata command");
     }
 
     private static void ShowUpdateHelp()

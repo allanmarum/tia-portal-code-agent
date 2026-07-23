@@ -61,6 +61,16 @@ jobs:
         run: |
           ./build.ps1 pack-cli
 
+      - name: Generate release manifest, SBOM, and checksums
+        shell: pwsh
+        run: |
+          ./build.ps1 pack-release
+
+      - name: Verify release manifest, SBOM, and checksums
+        shell: pwsh
+        run: |
+          ./build.ps1 verify-release
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -68,4 +78,8 @@ jobs:
           path: |
             artifacts/*.addin
             artifacts/*.nupkg
+            artifacts/release-manifest.json
+            artifacts/SHA256SUMS
+            artifacts/sbom.spdx.json
+            artifacts/THIRD_PARTY_NOTICES.md
           if-no-files-found: error

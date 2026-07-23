@@ -153,3 +153,83 @@ Manifest schema generated at pack time and verified during extraction:
 - **Verification Enforcement:** `PayloadValidator` and build verification targets automatically scan payload directories and reject packages if any `Siemens.*` assembly is present.
 - **Licensing Compliance:** Project-owned binaries, notices, and default configs are licensed under the repository license (`LICENSE`) and third-party notices (`THIRD_PARTY_NOTICES.md`).
 
+---
+
+## Release Distribution Artifacts & Schemas
+
+The release packaging process (`.\build.ps1 pack-release`) produces release metadata artifacts alongside `.addin` and `.nupkg` binaries in `artifacts/`:
+
+- **`release-manifest.json`**: Canonical release manifest containing version, channel, commit SHA, build timestamp, compatibility matrix, component versions, and artifact hashes.
+- **`SHA256SUMS`**: Standard SHA256 checksums file covering all published release artifacts.
+- **`sbom.spdx.json`**: SPDX 2.3 JSON Software Bill of Materials.
+- **`THIRD_PARTY_NOTICES.md`**: Open-source component third-party notices.
+
+### `release-manifest.json` (`ReleaseManifest`)
+
+```json
+{
+  "schemaVersion": 1,
+  "productVersion": "0.2.0-beta.1",
+  "channel": "beta",
+  "commitSha": "af09cc0",
+  "publishedAt": "2026-07-23T10:42:00.0000000+00:00",
+  "compatibility": {
+    "tiaPortalVersion": "V21",
+    "opennessVersion": "V21",
+    "targetFramework": "net8.0"
+  },
+  "components": {
+    "addin": {
+      "relativePath": "TiaAgent-0.2.0-beta.1.addin",
+      "version": "0.2.0-beta.1",
+      "sha256Hash": "a1b2c3...",
+      "sizeBytes": 524288
+    },
+    "cli": {
+      "relativePath": "TiaAgent.Cli.0.2.0-beta.1.nupkg",
+      "version": "0.2.0-beta.1",
+      "sha256Hash": "d4e5f6...",
+      "sizeBytes": 1048576
+    }
+  },
+  "artifacts": [
+    {
+      "name": "TiaAgent-0.2.0-beta.1.addin",
+      "sha256Hash": "a1b2c3...",
+      "sizeBytes": 524288,
+      "component": "addin"
+    },
+    {
+      "name": "release-manifest.json",
+      "sha256Hash": "e3b0c4...",
+      "sizeBytes": 1024,
+      "component": "manifest"
+    },
+    {
+      "name": "SHA256SUMS",
+      "sha256Hash": "f8a9b0...",
+      "sizeBytes": 512,
+      "component": "checksums"
+    },
+    {
+      "name": "sbom.spdx.json",
+      "sha256Hash": "c1d2e3...",
+      "sizeBytes": 4096,
+      "component": "sbom"
+    },
+    {
+      "name": "THIRD_PARTY_NOTICES.md",
+      "sha256Hash": "b2c3d4...",
+      "sizeBytes": 2048,
+      "component": "notices"
+    }
+  ]
+}
+```
+
+Validation of the release distribution can be executed via CLI:
+```bash
+tia-agent verify-release artifacts/
+```
+
+
