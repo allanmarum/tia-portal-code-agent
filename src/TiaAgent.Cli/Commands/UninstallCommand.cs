@@ -93,7 +93,7 @@ public static class UninstallCommand
                     Directory.Delete(versionDir, recursive: true);
                 }
 
-                RemoveAddInFilesForVersion(ver, userAddInsDir, stdout);
+                RemoveAddInFilesForVersion(ver, userAddInsDir, stdout, stderr);
 
                 installations.Versions.Remove(ver);
                 uninstalledVersions.Add(ver);
@@ -135,7 +135,8 @@ public static class UninstallCommand
             {
                 if (File.Exists(layout.CurrentManifestPath))
                 {
-                    try { File.Delete(layout.CurrentManifestPath); } catch { }
+                    try { File.Delete(layout.CurrentManifestPath); }
+                    catch (Exception ex) { stderr.WriteLine($"Warning: Failed to delete '{layout.CurrentManifestPath}': {ex.Message}"); }
                 }
             }
         }
@@ -144,7 +145,7 @@ public static class UninstallCommand
         return 0;
     }
 
-    private static void RemoveAddInFilesForVersion(string version, string userAddInsDir, TextWriter stdout)
+    private static void RemoveAddInFilesForVersion(string version, string userAddInsDir, TextWriter stdout, TextWriter stderr)
     {
         if (!Directory.Exists(userAddInsDir))
         {
@@ -164,7 +165,7 @@ public static class UninstallCommand
                     File.Delete(file);
                     stdout.WriteLine($"Removed Add-In artifact '{fileName}' from '{userAddInsDir}'.");
                 }
-                catch { }
+                catch (Exception ex) { stderr.WriteLine($"Warning: Failed to remove Add-In artifact '{fileName}': {ex.Message}"); }
             }
         }
     }

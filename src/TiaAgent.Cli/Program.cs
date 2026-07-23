@@ -44,7 +44,7 @@ public static class Program
         for (int i = 0; i < args.Length; i++)
         {
             var arg = args[i];
-            if ((string.Equals(arg, "--version", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-v", StringComparison.OrdinalIgnoreCase)) && i + 1 < args.Length)
+            if (string.Equals(arg, "--version", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
             {
                 options.Version = args[++i];
             }
@@ -87,7 +87,7 @@ public static class Program
         for (int i = 0; i < args.Length; i++)
         {
             var arg = args[i];
-            if ((string.Equals(arg, "--version", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-v", StringComparison.OrdinalIgnoreCase)) && i + 1 < args.Length)
+            if (string.Equals(arg, "--version", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
             {
                 options.Version = args[++i];
             }
@@ -161,7 +161,7 @@ public static class Program
         Console.WriteLine("Usage: tia-agent install [options]");
         Console.WriteLine();
         Console.WriteLine("Options:");
-        Console.WriteLine("  -v, --version <ver>      Specify version to install");
+        Console.WriteLine("  --version <ver>          Specify version to install");
         Console.WriteLine("  -f, --force              Force reinstallation if version exists");
         Console.WriteLine("  --payload-dir <dir>      Path to custom payload directory");
         Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
@@ -174,7 +174,7 @@ public static class Program
         Console.WriteLine("Usage: tia-agent uninstall [options]");
         Console.WriteLine();
         Console.WriteLine("Options:");
-        Console.WriteLine("  -v, --version <ver>      Specify version to uninstall");
+        Console.WriteLine("  --version <ver>          Specify version to uninstall");
         Console.WriteLine("  -a, --all                Uninstall all installed versions");
         Console.WriteLine("  -f, --force              Force removal ignoring minor cleanup errors");
         Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");

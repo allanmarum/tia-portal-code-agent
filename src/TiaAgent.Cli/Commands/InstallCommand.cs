@@ -37,7 +37,12 @@ public static class InstallCommand
             return 1;
         }
 
-        var payloadManifest = validation.Manifest ?? PayloadStore.ReadManifest(payloadDir);
+        var payloadManifest = validation.Manifest;
+        if (payloadManifest is null)
+        {
+            stderr.WriteLine("Payload validation succeeded but manifest is missing.");
+            return 1;
+        }
         var targetVersion = !string.IsNullOrWhiteSpace(options.Version)
             ? options.Version
             : payloadManifest.ProductVersion;
@@ -72,6 +77,11 @@ public static class InstallCommand
 
             stdout.WriteLine($"TIA Agent version '{targetVersion}' is already installed at '{versionDir}'. Set as active version.");
             return 0;
+        }
+
+        if (options.Force && Directory.Exists(versionDir))
+        {
+            Directory.Delete(versionDir, recursive: true);
         }
 
         CopyDirectory(payloadDir, versionDir, overwrite: true);
