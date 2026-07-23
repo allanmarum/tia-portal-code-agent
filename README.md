@@ -61,46 +61,67 @@ Breaking changes are expected while the architecture and end-to-end workflow are
 - Windows 10 or 11 x64;
 - Siemens TIA Portal V21 with Openness installed;
 - membership in the `Siemens TIA Openness` Windows group;
-- Visual Studio 2022;
 - .NET SDK 8 or newer;
-- .NET Framework Developer Pack 4.8;
 - `tia-mcp` installed;
-- at least one supported agent runtime.
+- at least one supported agent runtime (`opencode`, `mimo`, or `claude`).
 
-## Quick start
+For contributors building from source, Visual Studio 2022 and .NET Framework Developer Pack 4.8 are also required.
+
+## Installation
+
+Install the CLI global tool:
 
 ```powershell
-git clone https://github.com/industrix-com-br/tia-portal-code-agent.git
-cd tia-portal-code-agent
+# Stable release
+dotnet tool install --global Industrix.TiaAgent.Cli
 
-dotnet tool install -g TiaMcpServer
-tia-mcp doctor
+# Prerelease (alpha, beta, RC)
+dotnet tool install --global Industrix.TiaAgent.Cli --prerelease
+```
 
-.\build.ps1 all
-.\build.ps1 install
+Then install the payload, restart TIA Portal, and start services:
 
+```powershell
+tia-agent install
 tia-agent start
 ```
 
-Then:
+In TIA Portal V21:
 
-1. Open a disposable project in TIA Portal V21.
-2. Go to **Options > Settings > Add-Ins**.
-3. Activate **TIA Portal Code Agent**.
-4. Right-click a supported PLC object.
-5. Choose an action under **AI Assistant**.
+1. Go to **Options > Settings > Add-Ins**.
+2. Activate **TIA Portal Code Agent**.
+3. Right-click a supported PLC object and choose an AI Assistant action.
 
-Use the following commands to inspect or stop local services:
+For detailed instructions, see [Installation Guide](docs/INSTALLATION.md).
 
-```text
-tia-agent status
-tia-agent stop
-```
+## Quick commands
 
-For full setup and runtime configuration, see:
+| Command | Description |
+|---|---|
+| `tia-agent version` | Show current version |
+| `tia-agent doctor` | Run environment diagnostics |
+| `tia-agent status` | Show runtime status and health |
+| `tia-agent start` | Start and monitor runtime services |
+| `tia-agent stop` | Stop runtime services |
+| `tia-agent update` | Update to latest payload |
+| `tia-agent rollback` | Restore previous version |
+| `tia-agent channel` | View or change update channel |
 
-- [Running End-to-End](docs/RUN.md)
-- [Runtime Configuration](docs/RUNTIME.md)
+For full command reference, run `tia-agent --help`.
+
+## Documentation
+
+- [Installation Guide](docs/INSTALLATION.md) -- prerequisites, stable/prerelease/specific version install
+- [Updating](docs/UPDATING.md) -- update procedures, channel-aware updates, verification
+- [Rollback](docs/ROLLBACK.md) -- restore previous versions
+- [Troubleshooting](docs/TROUBLESHOOTING.md) -- common errors, diagnostics, logs
+- [Running End-to-End](docs/RUN.md) -- full setup and runtime configuration
+- [Runtime Configuration](docs/RUNTIME.md) -- runtime selection, modes, and configuration
+- [Versioning Policy](docs/VERSIONING.md) -- semantic versioning and release channels
+- [Installed Layout](docs/LAYOUT.md) -- filesystem layout and manifest schemas
+- [Release Policy](docs/RELEASING.md) -- release process and support policy
+- [Compatibility Policy](docs/COMPATIBILITY.md) -- TIA Portal compatibility matrix
+- [Security Model](docs/spec/SECURITY_MODEL.md) -- trust boundaries, permissions, and safety
 
 ## Development
 
