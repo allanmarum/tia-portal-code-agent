@@ -27,12 +27,14 @@ public static class Program
         return command switch
         {
             "install" => HandleInstall(commandArgs),
+            "activate" => HandleActivate(commandArgs),
             "uninstall" => HandleUninstall(commandArgs),
             "start" or "run" => HandleStart(commandArgs),
             "stop" => HandleStop(commandArgs),
             "status" => HandleStatus(commandArgs),
             "doctor" => HandleDoctor(commandArgs),
             "config" or "configuration" => HandleConfig(commandArgs),
+            "runtime" or "runtimes" => HandleRuntime(commandArgs),
             "version" => HandleVersion(commandArgs),
             _ => HandleUnknown(args[0])
         };
@@ -79,6 +81,53 @@ public static class Program
         }
 
         return InstallCommand.Execute(options);
+    }
+
+    private static int HandleActivate(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowActivateHelp();
+            return 0;
+        }
+
+        var options = new ActivateOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--version", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.Version = args[++i];
+            }
+            else if (string.Equals(arg, "--force", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-f", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Force = true;
+            }
+            else if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--user-addins-dir", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.UserAddInsDir = args[++i];
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (!arg.StartsWith('-') && string.IsNullOrEmpty(options.Version))
+            {
+                options.Version = arg;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unknown option for activate: '{arg}'");
+                ShowActivateHelp();
+                return 1;
+            }
+        }
+
+        return ActivateCommand.Execute(options);
     }
 
     private static int HandleUninstall(string[] args)
@@ -211,6 +260,60 @@ public static class Program
         }
 
         return ConfigCommand.Execute(options);
+    }
+
+    private static int HandleRuntime(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowRuntimeHelp();
+            return 0;
+        }
+
+        var options = new RuntimeOptions();
+        var positional = new List<string>();
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--mode", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.Mode = args[++i];
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else if (string.Equals(arg, "--verbose", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-v", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Verbose = true;
+            }
+            else if (arg.StartsWith('-'))
+            {
+                Console.Error.WriteLine($"Unknown option for runtime: '{arg}'");
+                ShowRuntimeHelp();
+                return 1;
+            }
+            else
+            {
+                positional.Add(arg);
+            }
+        }
+
+        if (positional.Count > 0)
+        {
+            options.Subcommand = positional[0];
+        }
+        if (positional.Count > 1)
+        {
+            options.RuntimeId = positional[1];
+        }
+
+        return RuntimeCommand.Execute(options);
     }
 
     private static int HandleVersion(string[] args)
@@ -377,18 +480,51 @@ public static class Program
         Console.WriteLine("Usage: tia-agent <command> [options]");
         Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  install        Install or activate TIA Agent version");
+        Console.WriteLine("  install        Install TIA Agent version");
+        Console.WriteLine("  activate       Activate installed TIA Agent version");
         Console.WriteLine("  uninstall      Uninstall TIA Agent version(s)");
         Console.WriteLine("  start          Start and monitor runtime services (alias: run)");
         Console.WriteLine("  stop           Stop runtime services");
         Console.WriteLine("  status         Show runtime status and health information");
         Console.WriteLine("  doctor         Run environment and setup diagnostics");
         Console.WriteLine("  config         View or modify user configuration settings");
+        Console.WriteLine("  runtime        Manage and validate agent runtimes (opencode, mimo, claude)");
         Console.WriteLine("  version        Show detailed version information");
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  -v, --version  Show version information");
         Console.WriteLine("  -h, --help     Show help and usage information");
+    }
+
+    private static void ShowActivateHelp()
+    {
+        Console.WriteLine("Usage: tia-agent activate <version> [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --version <ver>          Specify version to activate");
+        Console.WriteLine("  -f, --force              Force activation even if version directory check fails");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  --user-addins-dir <dir>  Path to custom Siemens UserAddIns directory");
+        Console.WriteLine("  --json                   Output result in JSON format");
+        Console.WriteLine("  -h, --help               Show help for activate command");
+    }
+
+    private static void ShowRuntimeHelp()
+    {
+        Console.WriteLine("Usage: tia-agent runtime [subcommand] [options]");
+        Console.WriteLine();
+        Console.WriteLine("Subcommands:");
+        Console.WriteLine("  list                     List registered runtimes and availability (default)");
+        Console.WriteLine("  use <runtime-id>         Select default agent runtime (opencode, mimo, claude)");
+        Console.WriteLine("  doctor [runtime-id]      Run diagnostic checks for runtimes and MCP setup");
+        Console.WriteLine("  status                   Show runtime execution status");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --mode <cli|server>      Set execution mode for runtime");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  --json                   Output in JSON format");
+        Console.WriteLine("  -v, --verbose            Show detailed recommendation information");
+        Console.WriteLine("  -h, --help               Show help for runtime command");
     }
 
     private static void ShowStartHelp()
