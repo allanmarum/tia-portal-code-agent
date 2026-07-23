@@ -3,6 +3,7 @@ using Xunit;
 
 namespace TiaAgent.Cli.Tests;
 
+[Collection("ConsoleTests")]
 public class ProgramTests
 {
     private static readonly string[] UnknownArgs = ["--unknown-foo"];

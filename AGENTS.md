@@ -55,15 +55,15 @@ See `docs/RUNTIME.md` for full runtime configuration details.
 
 The Runtime Supervisor orchestrates service startup, monitoring, and shutdown. It is runtime-aware: it reads `%LOCALAPPDATA%\TiaAgent\config.json` to determine which runtime to start, and only launches a server process when the selected runtime is in server mode.
 
-```powershell
+```text
 # Start all services
-.\src\runtime\Scripts\run.ps1
+tia-agent start  (or .\src\runtime\Scripts\run.ps1)
 
 # Check status
-.\src\runtime\Scripts\status.ps1
+tia-agent status (or .\src\runtime\Scripts\status.ps1)
 
 # Stop all services
-.\src\runtime\Scripts\stop.ps1
+tia-agent stop   (or .\src\runtime\Scripts\stop.ps1)
 ```
 
 See `docs/RUN.md` for detailed usage, `docs/RUNTIME.md` for runtime configuration, and `docs/spec/ARCHITECTURE.md` for the architectural specification.

@@ -79,7 +79,7 @@ tia-mcp doctor
 .\build.ps1 all
 .\build.ps1 install
 
-.\src\runtime\Scripts\run.ps1
+tia-agent start
 ```
 
 Then:
@@ -92,9 +92,9 @@ Then:
 
 Use the following commands to inspect or stop local services:
 
-```powershell
-.\src\runtime\Scripts\status.ps1
-.\src\runtime\Scripts\stop.ps1
+```text
+tia-agent status
+tia-agent stop
 ```
 
 For full setup and runtime configuration, see:

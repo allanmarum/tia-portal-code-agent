@@ -28,6 +28,9 @@ public static class Program
         {
             "install" => HandleInstall(commandArgs),
             "uninstall" => HandleUninstall(commandArgs),
+            "start" or "run" => HandleStart(commandArgs),
+            "stop" => HandleStop(commandArgs),
+            "status" => HandleStatus(commandArgs),
             "doctor" => HandleDoctor(commandArgs),
             "config" or "configuration" => HandleConfig(commandArgs),
             "version" => HandleVersion(commandArgs),
@@ -245,6 +248,111 @@ public static class Program
         return VersionCommand.Execute(options);
     }
 
+    private static int HandleStart(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowStartHelp();
+            return 0;
+        }
+
+        var options = new StartOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--config", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.Config = args[++i];
+            }
+            else if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--repo-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.RepoRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--no-monitor", StringComparison.OrdinalIgnoreCase))
+            {
+                options.NoMonitor = true;
+            }
+            else if (string.Equals(arg, "--verbose", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-v", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Verbose = true;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unknown option for start: '{arg}'");
+                ShowStartHelp();
+                return 1;
+            }
+        }
+
+        return StartCommand.Execute(options);
+    }
+
+    private static int HandleStop(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowStopHelp();
+            return 0;
+        }
+
+        var options = new StopOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--force", StringComparison.OrdinalIgnoreCase) || string.Equals(arg, "-f", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Force = true;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unknown option for stop: '{arg}'");
+                ShowStopHelp();
+                return 1;
+            }
+        }
+
+        return StopCommand.Execute(options);
+    }
+
+    private static int HandleStatus(string[] args)
+    {
+        if (args.Any(IsHelpOption))
+        {
+            ShowStatusHelp();
+            return 0;
+        }
+
+        var options = new StatusOptions();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (string.Equals(arg, "--custom-root", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                options.CustomRoot = args[++i];
+            }
+            else if (string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Json = true;
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unknown option for status: '{arg}'");
+                ShowStatusHelp();
+                return 1;
+            }
+        }
+
+        return StatusCommand.Execute(options);
+    }
+
     private static int HandleUnknown(string arg)
     {
         Console.Error.WriteLine($"Unknown command or option: '{arg}'");
@@ -271,6 +379,9 @@ public static class Program
         Console.WriteLine("Commands:");
         Console.WriteLine("  install        Install or activate TIA Agent version");
         Console.WriteLine("  uninstall      Uninstall TIA Agent version(s)");
+        Console.WriteLine("  start          Start and monitor runtime services (alias: run)");
+        Console.WriteLine("  stop           Stop runtime services");
+        Console.WriteLine("  status         Show runtime status and health information");
         Console.WriteLine("  doctor         Run environment and setup diagnostics");
         Console.WriteLine("  config         View or modify user configuration settings");
         Console.WriteLine("  version        Show detailed version information");
@@ -278,6 +389,39 @@ public static class Program
         Console.WriteLine("Options:");
         Console.WriteLine("  -v, --version  Show version information");
         Console.WriteLine("  -h, --help     Show help and usage information");
+    }
+
+    private static void ShowStartHelp()
+    {
+        Console.WriteLine("Usage: tia-agent start [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --config <path>          Path to settings.json file");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  --repo-root <path>       Path to custom repository root directory");
+        Console.WriteLine("  --no-monitor             Start services and exit after health check passes");
+        Console.WriteLine("  -v, --verbose            Enable verbose output");
+        Console.WriteLine("  -h, --help               Show help for start command");
+    }
+
+    private static void ShowStopHelp()
+    {
+        Console.WriteLine("Usage: tia-agent stop [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  -f, --force              Force kill processes without waiting for graceful shutdown");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  -h, --help               Show help for stop command");
+    }
+
+    private static void ShowStatusHelp()
+    {
+        Console.WriteLine("Usage: tia-agent status [options]");
+        Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --json                   Output runtime status in JSON format");
+        Console.WriteLine("  --custom-root <root>     Path to custom installation root directory");
+        Console.WriteLine("  -h, --help               Show help for status command");
     }
 
     private static void ShowInstallHelp()

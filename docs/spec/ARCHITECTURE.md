@@ -1874,21 +1874,21 @@ Fallback: If `addin.json` exists, it takes precedence over runtime discovery.
 
 ### 30.10 Troubleshooting Commands
 
-```powershell
+```text
 # Check runtime status
-.\src\runtime\Scripts\status.ps1
+tia-agent status (or .\src\runtime\Scripts\status.ps1)
 
 # JSON status for automation
-.\src\runtime\Scripts\status.ps1 -Json
+tia-agent status --json (or .\src\runtime\Scripts\status.ps1 -Json)
 
 # Start runtime
-.\src\runtime\Scripts\run.ps1
+tia-agent start (or .\src\runtime\Scripts\run.ps1)
 
 # Start with verbose logging
-.\src\runtime\Scripts\run.ps1 -Verbose
+tia-agent start -v (or .\src\runtime\Scripts\run.ps1 -Verbose)
 
 # Stop runtime
-.\src\runtime\Scripts\stop.ps1
+tia-agent stop (or .\src\runtime\Scripts\stop.ps1)
 
 # Force stop (skip graceful shutdown)
 .\src\runtime\Scripts\stop.ps1 -Force
