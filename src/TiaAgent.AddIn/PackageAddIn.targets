@@ -27,6 +27,7 @@
     <AddInPackagePath>$(AddInArtifactsDir)TiaAgent-$(PublisherVersion).addin</AddInPackagePath>
     <AddInTempPackagePath>$(AddInArtifactsDir)TiaAgent-$(PublisherVersion).addin.tmp</AddInTempPackagePath>
     <ThirdPartyNoticesSource>$(MSBuildThisFileDirectory)..\..\THIRD_PARTY_NOTICES.md</ThirdPartyNoticesSource>
+    <RequireSigning Condition="'$(RequireSigning)' == ''">$(TIA_REQUIRE_SIGNING)</RequireSigning>
   </PropertyGroup>
 
   <!-- ============================================================
@@ -36,7 +37,7 @@
          1. Validate all required inputs (fail fast with clear errors)
          2. Expand Config.xml template with resolved product version
          3. Run Siemens Publisher to create the raw .addin
-         4. Sign the package with OpcSigner (optional)
+         4. Sign the package with OpcSigner (mandatory if RequireSigning=true)
          5. Write to a temp file (never the final filename)
          6. Verify the temp .addin as an OPC package (inline)
          7. Copy third-party notices to artifacts/
@@ -61,6 +62,8 @@
            Text="Siemens Publisher not found at $(TiaPublisherPath). Install TIA Portal V21." />
     <Error Condition="!Exists('$(_ContractsDllPath)')"
            Text="TiaAgent.Contracts.dll not found at $(_ContractsDllPath). Required by Config.xml AdditionalAssemblies." />
+    <Error Condition="'$(RequireSigning)' == 'true' AND !Exists('$(OpcSignerPath)')"
+           Text="Mandatory release signing failed: OpcSigner not found at $(OpcSignerPath). Build OpcSigner first." />
 
     <Message Importance="high" Text="=== Packaging TIA Portal Add-In (deterministic, atomic) ===" />
 
@@ -81,11 +84,15 @@
 
     <!-- ── Sign the .addin package with OpcSigner ── -->
     <Exec
-      Command="&quot;$(OpcSignerPath)&quot; &quot;$(_PublisherAddInPath)&quot;"
-      Condition="Exists('$(_PublisherAddInPath)') AND Exists('$(OpcSignerPath)')"
+      Command="&quot;$(OpcSignerPath)&quot; sign &quot;$(_PublisherAddInPath)&quot;"
+      Condition="Exists('$(_PublisherAddInPath)') AND Exists('$(OpcSignerPath)') AND '$(RequireSigning)' != 'true'"
+      ConsoleToMSBuild="true" />
+    <Exec
+      Command="&quot;$(OpcSignerPath)&quot; sign &quot;$(_PublisherAddInPath)&quot; --require-signed"
+      Condition="Exists('$(_PublisherAddInPath)') AND Exists('$(OpcSignerPath)') AND '$(RequireSigning)' == 'true'"
       ConsoleToMSBuild="true" />
     <Warning Text="OpcSigner not found at $(OpcSignerPath). Package remains unsigned."
-             Condition="Exists('$(_PublisherAddInPath)') AND !Exists('$(OpcSignerPath)')" />
+             Condition="Exists('$(_PublisherAddInPath)') AND !Exists('$(OpcSignerPath)') AND '$(RequireSigning)' != 'true'" />
 
     <!-- ── Write to temp file (never the final filename) ── -->
     <MakeDir Directories="$(AddInArtifactsDir)" Condition="!Exists('$(AddInArtifactsDir)')" />
@@ -103,6 +110,11 @@
     <Message Importance="high" Text="--- Verifying package contents ---" />
     <Exec
       Command="powershell -NoProfile -Command &quot;Add-Type -AssemblyName WindowsBase; $pkg = [IO.Packaging.Package]::Open('$(AddInTempPackagePath)', [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read); try { $parts = @($pkg.GetParts() | ForEach-Object { $_.Uri.ToString() }); $required = @('TIAAGENT\.ADDIN', '^/EngineeringVersion$', '/Meta/', '/Permissions/'); $missing = @(); foreach ($r in $required) { if (-not ($parts -match $r)) { $missing += $r } }; if ($missing.Count -gt 0) { Write-Error ('Missing required OPC parts: ' + ($missing -join ', ')); exit 1 }; $configXml = [xml](Get-Content '$(AddInBuildDir)Config.xml'); $expectedVersion = '$(PublisherVersion)'; $packageVersion = $configXml.PackageConfiguration.Product.Version; if ($packageVersion -ne $expectedVersion) { Write-Error ('Product version mismatch: package has ' + $packageVersion + ', expected ' + $expectedVersion); exit 1 }; $requiredAssemblies = @('TiaAgent.AddIn.dll', 'TiaAgent.Contracts.dll'); $missingAssemblies = @(); foreach ($a in $requiredAssemblies) { $found = $false; foreach ($p in $parts) { if ($p -match ('(?i)' + [regex]::Escape($a))) { $found = $true; break } }; if (-not $found) { $missingAssemblies += $a } }; if ($missingAssemblies.Count -gt 0) { Write-Error ('Missing required assemblies in package: ' + ($missingAssemblies -join ', ')); exit 1 }; Write-Host 'Package verification passed.' } finally { $pkg.Close(); $pkg.Dispose() }&quot;"
+      ConsoleToMSBuild="true" />
+
+    <Exec
+      Command="&quot;$(OpcSignerPath)&quot; verify &quot;$(AddInTempPackagePath)&quot;"
+      Condition="Exists('$(OpcSignerPath)') AND '$(RequireSigning)' == 'true'"
       ConsoleToMSBuild="true" />
 
     <!-- ── Copy third-party notices to artifacts/ ── -->
@@ -134,6 +146,14 @@
            Text=".addin file not found at $(AddInPackagePath). Run PackAddIn first." />
 
     <Message Importance="high" Text="=== Verifying Add-In package ===" />
+
+    <!-- ── Digital signature verification ── -->
+    <Exec
+      Command="&quot;$(OpcSignerPath)&quot; verify &quot;$(AddInPackagePath)&quot;"
+      Condition="Exists('$(OpcSignerPath)')"
+      ConsoleToMSBuild="true" />
+    <Error Condition="'$(RequireSigning)' == 'true' AND !Exists('$(OpcSignerPath)')"
+           Text="Mandatory signature verification failed: OpcSigner not found at $(OpcSignerPath)." />
 
     <!-- Inspect OPC package parts and assemblies via PowerShell.
          Note: Product version validation is done inline by PackAddIn (which has access to

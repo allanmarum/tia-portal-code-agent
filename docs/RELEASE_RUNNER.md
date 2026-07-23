@@ -64,7 +64,7 @@ runs-on: [self-hosted, Windows, x64, tia-v21, release-runner]
 
 ### Secret and Credential Handling
 - Signing certificates, private keys, and API tokens are NEVER stored in the repository, workspace, or build logs.
-- Code-signing keys are managed via the Windows Certificate Store or hardware security modules (HSM) accessible only to the `tia-runner` account.
+- Code-signing keys and certificates are managed via encrypted repository secrets (`TIA_SIGNING_CERT_PFX_BASE64`, `TIA_SIGNING_CERT_PASSWORD`), the Windows Certificate Store, or hardware security modules (HSM) accessible only to the `tia-runner` account. See `docs/SIGNING.md` for certificate provisioning, rotation, and verification details.
 - Build scripts mask secrets from standard output and standard error streams.
 - Secret environment variables injected by GitHub Actions are retained in memory for the duration of the job step and cleared immediately after.
 
