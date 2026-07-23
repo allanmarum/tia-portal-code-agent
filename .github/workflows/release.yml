@@ -72,8 +72,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Validate signing secrets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $requiredSecrets = @(
+            "TIA_SIGNING_CERT_PFX_BASE64",
+            "TIA_SIGNING_CERT_PASSWORD",
+            "TIA_SIGNING_CERT_THUMBPRINT"
+          )
+          $missing = @()
+          foreach ($name in $requiredSecrets) {
+            if ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name))) {
+              $missing += $name
+            }
+          }
+          if ($missing.Count -gt 0) {
+            $list = $missing -join ", "
+            Write-Error "::error::Missing required signing secrets: $list"
+            exit 1
+          }
+          Write-Host "All signing secrets are present."
 
       - name: Sanitize release runner workspace
         shell: pwsh
@@ -194,6 +213,16 @@ jobs:
           echo "=== .addin files ==="
           ls -la artifacts/*.addin 2>/dev/null || echo "No .addin files"
 
+      - name: Validate NuGet API key
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [[ -z "${NUGET_API_KEY:-}" ]]; then
+            echo "::error::NUGET_API_KEY is required for an official release. Configure this secret in repository settings."
+            exit 1
+          fi
+          echo "NUGET_API_KEY is present."
+
       - name: Check for existing release (idempotency guard)
         id: check-existing
         env:
@@ -246,15 +275,8 @@ jobs:
         id: check-nuget
         env:
           VERSION: ${{ needs.validate-tag.outputs.version }}
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           set -euo pipefail
-
-          if [[ -z "${NUGET_API_KEY:-}" ]]; then
-            echo "::warning::NUGET_API_KEY secret not configured — skipping NuGet idempotency check."
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           echo "Checking if TiaAgent.Cli $VERSION already exists on NuGet..."
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \

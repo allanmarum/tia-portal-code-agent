@@ -176,6 +176,68 @@ public sealed class RepositoryHealthAndSecurityTests
         content.Should().Contain("Development vs. Release", "SIGNING.md must document separation of development and release packaging");
     }
 
+    [Fact]
+    public void Release_runner_docs_use_windows_svc_cmd_not_svc_sh()
+    {
+        var root = FindRepositoryRoot();
+        var docPath = Path.Combine(root, "docs", "RELEASE_RUNNER.md");
+
+        File.Exists(docPath).Should().BeTrue("docs/RELEASE_RUNNER.md must exist");
+
+        var content = File.ReadAllText(docPath);
+        content.Should().NotContain("svc.sh",
+            "RELEASE_RUNNER.md must not reference svc.sh (Linux) — use svc.cmd (Windows) for the self-hosted runner");
+        content.Should().Contain("svc.cmd",
+            "RELEASE_RUNNER.md must document Windows svc.cmd service commands");
+    }
+
+    [Fact]
+    public void Provisioning_script_references_correct_tia_addin_publisher_path()
+    {
+        var root = FindRepositoryRoot();
+        var scriptPath = Path.Combine(root, "scripts", "runner", "provision-release-runner.ps1");
+
+        File.Exists(scriptPath).Should().BeTrue("scripts/runner/provision-release-runner.ps1 must exist");
+
+        var content = File.ReadAllText(scriptPath);
+        content.Should().NotContain("V21.AddIn",
+            "Provisioning script must not reference non-existent V21.AddIn subdirectory for the Add-In Publisher");
+        content.Should().Contain("AddIn.Publisher",
+            "Provisioning script must reference the Siemens Add-In Publisher executable");
+    }
+
+    [Fact]
+    public void Release_workflow_validates_signing_secrets_before_build()
+    {
+        var root = FindRepositoryRoot();
+        var workflowPath = Path.Combine(root, ".github", "workflows", "release.yml");
+
+        File.Exists(workflowPath).Should().BeTrue(".github/workflows/release.yml must exist");
+
+        var content = File.ReadAllText(workflowPath);
+        content.Should().Contain("Validate signing secrets",
+            "Release workflow must validate signing secrets before expensive build operations");
+        content.Should().Contain("TIA_SIGNING_CERT_PFX_BASE64",
+            "Release workflow must check for TIA_SIGNING_CERT_PFX_BASE64");
+        content.Should().Contain("TIA_SIGNING_CERT_PASSWORD",
+            "Release workflow must check for TIA_SIGNING_CERT_PASSWORD");
+        content.Should().Contain("TIA_SIGNING_CERT_THUMBPRINT",
+            "Release workflow must check for TIA_SIGNING_CERT_THUMBPRINT");
+    }
+
+    [Fact]
+    public void Release_workflow_fails_fast_when_nuget_api_key_missing()
+    {
+        var root = FindRepositoryRoot();
+        var workflowPath = Path.Combine(root, ".github", "workflows", "release.yml");
+
+        File.Exists(workflowPath).Should().BeTrue(".github/workflows/release.yml must exist");
+
+        var content = File.ReadAllText(workflowPath);
+        content.Should().Contain("Validate NuGet API key",
+            "Release workflow must validate NUGET_API_KEY before creating any external release artifacts");
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

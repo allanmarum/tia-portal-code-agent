@@ -58,7 +58,7 @@ $MsBuildVersionArguments = @("-p:Version=$ProductVersion", "-p:SourceRevisionId=
 # Auto-detect TIA Portal V21 assemblies.
 $tiaBasePath = "C:\Program Files\Siemens\Automation\Portal V21"
 $tiaNet48Path = "$tiaBasePath\PublicAPI\V21\net48"
-$tiaAddInPath = "$tiaBasePath\PublicAPI\V21.AddIn"
+$tiaAddInPath = "$tiaBasePath\PublicAPI\V21"
 if (Test-Path "$tiaNet48Path\Siemens.Engineering.Base.dll") {
     $env:TiaPublicApiDir = $tiaNet48Path
     $env:SiemensAssembliesExist = "true"
