@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 using TiaAgent.Cli.Layout;
 using TiaAgent.Cli.Payload;
 
@@ -59,7 +60,19 @@ public static class InstallCommand
         {
             installations = ManifestStore.Read<InstallationsManifest>(layout.InstallationsManifestPath);
         }
-        catch
+        catch (FileNotFoundException)
+        {
+            installations = new InstallationsManifest();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            installations = new InstallationsManifest();
+        }
+        catch (JsonException)
+        {
+            installations = new InstallationsManifest();
+        }
+        catch (IOException)
         {
             installations = new InstallationsManifest();
         }
@@ -80,7 +93,10 @@ public static class InstallCommand
                     previousVersion = existingCurrent.PreviousVersion;
                 }
             }
-            catch { }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+            catch (JsonException) { }
+            catch (IOException) { }
         }
 
         if (installations.Versions.ContainsKey(targetVersion) && Directory.Exists(versionDir) && !options.Force)

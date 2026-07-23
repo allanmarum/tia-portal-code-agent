@@ -57,7 +57,19 @@ public static class UpdateCommand
         {
             installations = ManifestStore.Read<InstallationsManifest>(layout.InstallationsManifestPath);
         }
-        catch
+        catch (FileNotFoundException)
+        {
+            installations = new InstallationsManifest();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            installations = new InstallationsManifest();
+        }
+        catch (JsonException)
+        {
+            installations = new InstallationsManifest();
+        }
+        catch (IOException)
         {
             installations = new InstallationsManifest();
         }
@@ -73,7 +85,11 @@ public static class UpdateCommand
                 payloadManifest = validation.Manifest;
             }
         }
-        catch
+        catch (IOException)
+        {
+            // Optional payload discovery
+        }
+        catch (UnauthorizedAccessException)
         {
             // Optional payload discovery
         }
@@ -188,7 +204,7 @@ public static class UpdateCommand
         };
 
         ManifestStore.WriteAtomic(layout.CurrentManifestPath, updatedCurrent);
-        DeployAddInIfPresent(versionDir, options.UserAddInsDir, options.Json ? TextWriter.Null : stdout);
+        CommandHelpers.DeployAddInIfPresent(versionDir, options.UserAddInsDir, options.Json ? TextWriter.Null : stdout);
 
         var finalReport = new UpdateReport
         {
@@ -209,36 +225,5 @@ public static class UpdateCommand
         }
 
         return 0;
-    }
-
-    private static void DeployAddInIfPresent(string versionDir, string? customUserAddInsDir, TextWriter stdout)
-    {
-        if (!Directory.Exists(versionDir))
-        {
-            return;
-        }
-
-        var userAddInsDir = customUserAddInsDir;
-        if (string.IsNullOrWhiteSpace(userAddInsDir))
-        {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            userAddInsDir = Path.Combine(appData, "Siemens", "Automation", "Portal V21", "UserAddIns");
-        }
-
-        var addinSubDir = Path.Combine(versionDir, "AddIn");
-        if (Directory.Exists(addinSubDir))
-        {
-            var addinFiles = Directory.GetFiles(addinSubDir, "*.addin");
-            if (addinFiles.Length > 0)
-            {
-                Directory.CreateDirectory(userAddInsDir);
-                foreach (var addinFile in addinFiles)
-                {
-                    var destFile = Path.Combine(userAddInsDir, Path.GetFileName(addinFile));
-                    File.Copy(addinFile, destFile, overwrite: true);
-                    stdout.WriteLine($"Deployed Add-In artifact '{Path.GetFileName(addinFile)}' to '{userAddInsDir}'.");
-                }
-            }
-        }
     }
 }
