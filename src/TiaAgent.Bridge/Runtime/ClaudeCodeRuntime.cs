@@ -134,8 +134,10 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
         {
             return new AgentTaskResult
             {
-                Success = false, Error = "Task was cancelled",
-                ErrorCode = "TASK_CANCELLED", RuntimeId = Id
+                Success = false,
+                Error = "Task was cancelled",
+                ErrorCode = "TASK_CANCELLED",
+                RuntimeId = Id
             };
         }
 
@@ -143,8 +145,10 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
         {
             return new AgentTaskResult
             {
-                Success = false, Error = result.Error ?? "Task timed out",
-                ErrorCode = "TASK_TIMEOUT", RuntimeId = Id
+                Success = false,
+                Error = result.Error ?? "Task timed out",
+                ErrorCode = "TASK_TIMEOUT",
+                RuntimeId = Id
             };
         }
 
@@ -152,8 +156,10 @@ public sealed class ClaudeCodeRuntime : IAgentRuntime, IDisposable
         {
             return new AgentTaskResult
             {
-                Success = false, Error = result.Error,
-                ErrorCode = "RUNTIME_EXECUTION_FAILED", RuntimeId = Id
+                Success = false,
+                Error = result.Error,
+                ErrorCode = "RUNTIME_EXECUTION_FAILED",
+                RuntimeId = Id
             };
         }
 

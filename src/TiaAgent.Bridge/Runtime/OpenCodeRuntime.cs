@@ -263,8 +263,11 @@ public sealed class OpenCodeRuntime : IAgentRuntime, IDisposable
         {
             return new AgentTaskResult
             {
-                Success = false, Error = "Task was cancelled",
-                ErrorCode = "TASK_CANCELLED", RuntimeId = Id, RuntimeMode = "cli"
+                Success = false,
+                Error = "Task was cancelled",
+                ErrorCode = "TASK_CANCELLED",
+                RuntimeId = Id,
+                RuntimeMode = "cli"
             };
         }
 
@@ -272,8 +275,11 @@ public sealed class OpenCodeRuntime : IAgentRuntime, IDisposable
         {
             return new AgentTaskResult
             {
-                Success = false, Error = result.Error ?? "Task timed out",
-                ErrorCode = "TASK_TIMEOUT", RuntimeId = Id, RuntimeMode = "cli"
+                Success = false,
+                Error = result.Error ?? "Task timed out",
+                ErrorCode = "TASK_TIMEOUT",
+                RuntimeId = Id,
+                RuntimeMode = "cli"
             };
         }
 
@@ -281,8 +287,11 @@ public sealed class OpenCodeRuntime : IAgentRuntime, IDisposable
         {
             return new AgentTaskResult
             {
-                Success = false, Error = result.Error,
-                ErrorCode = "RUNTIME_EXECUTION_FAILED", RuntimeId = Id, RuntimeMode = "cli"
+                Success = false,
+                Error = result.Error,
+                ErrorCode = "RUNTIME_EXECUTION_FAILED",
+                RuntimeId = Id,
+                RuntimeMode = "cli"
             };
         }
 
@@ -302,8 +311,10 @@ public sealed class OpenCodeRuntime : IAgentRuntime, IDisposable
 
         return new AgentTaskResult
         {
-            Success = true, Response = response,
-            RuntimeId = Id, RuntimeMode = "cli"
+            Success = true,
+            Response = response,
+            RuntimeId = Id,
+            RuntimeMode = "cli"
         };
     }
 

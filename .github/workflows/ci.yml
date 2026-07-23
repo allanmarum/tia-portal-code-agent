@@ -104,6 +104,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
+      - name: Check code formatting
+        shell: pwsh
+        run: |
+          dotnet format TiaAgent.sln --verify-no-changes
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Code formatting violations detected. Run 'dotnet format TiaAgent.sln' locally and commit the fixes."
+            exit 1
+          }
+
       - name: Run build and test script
         shell: pwsh
         run: |
