@@ -150,20 +150,23 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
+          $expectedVersion = [Environment]::GetEnvironmentVariable("EXPECTED_VERSION")
+          $expectedCommit = [Environment]::GetEnvironmentVariable("EXPECTED_COMMIT")
+
           Write-Host "Validating artifacts match tag and commit..."
-          Write-Host "  Expected version: $EXPECTED_VERSION"
-          Write-Host "  Expected commit:  $EXPECTED_COMMIT"
+          Write-Host "  Expected version: $expectedVersion"
+          Write-Host "  Expected commit:  $expectedCommit"
 
           # Verify manifest version matches tag
           $manifest = Get-Content "artifacts/release-manifest.json" | ConvertFrom-Json
-          if ($manifest.productVersion -ne $EXPECTED_VERSION) {
-            throw "Manifest version '$($manifest.productVersion)' does not match tag version '$EXPECTED_VERSION'"
+          if ($manifest.productVersion -ne $expectedVersion) {
+            throw "Manifest version '$($manifest.productVersion)' does not match tag version '$expectedVersion'"
           }
           Write-Host "  Manifest version: OK ($($manifest.productVersion))"
 
           # Verify manifest commit matches HEAD
-          if ($manifest.commitSha -ne $EXPECTED_COMMIT) {
-            throw "Manifest commit '$($manifest.commitSha)' does not match expected commit '$EXPECTED_COMMIT'"
+          if ($manifest.commitSha -ne $expectedCommit) {
+            throw "Manifest commit '$($manifest.commitSha)' does not match expected commit '$expectedCommit'"
           }
           Write-Host "  Manifest commit: OK ($($manifest.commitSha))"
 
