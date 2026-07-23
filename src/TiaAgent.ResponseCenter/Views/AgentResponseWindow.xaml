@@ -1,0 +1,278 @@
+<Window x:Class="TiaAgent.ResponseCenter.Views.AgentResponseWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:converters="clr-namespace:TiaAgent.ResponseCenter.Converters"
+        xmlns:local="clr-namespace:TiaAgent.ResponseCenter"
+        Title="{Binding ActionDisplay, StringFormat='AI Code Agent — {0}'}"
+        Width="700" Height="600"
+        MinWidth="500" MinHeight="400"
+        WindowStartupLocation="CenterScreen"
+        Background="#FFFFFF">
+
+    <Window.Resources>
+        <converters:StateToStatusConverter x:Key="StateToStatus" />
+        <converters:StateToColorConverter x:Key="StateToColor" />
+        <converters:StateToProgressVisibilityConverter x:Key="StateToProgress" />
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <converters:StringToVisibilityConverter x:Key="StringToVis" />
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Row 0: Header -->
+        <Border Grid.Row="0" Background="#0078D4" Padding="12,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="AI Code Agent"
+                               Foreground="White"
+                               FontSize="16"
+                               FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding ActionDisplay}"
+                               Foreground="#CCFFFFFF"
+                               FontSize="12"
+                               Margin="0,2,0,0" />
+                </StackPanel>
+
+                <TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Foreground="#CCFFFFFF"
+                           FontSize="11"
+                           Text="{Binding RuntimeId, StringFormat='Runtime: {0}'}"
+                           Visibility="{Binding RuntimeId, Converter={StaticResource StringToVis}}" />
+            </Grid>
+        </Border>
+
+        <!-- Row 1: Context info -->
+        <Border Grid.Row="1" Background="#F6F6F6" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="12,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Object name -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Object:" FontWeight="SemiBold" FontSize="12" Margin="0,0,4,0" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ObjectName}" FontSize="12" />
+
+                <!-- Type -->
+                <TextBlock Grid.Row="0" Grid.Column="2" Text="Type:" FontWeight="SemiBold" FontSize="12" Margin="12,0,4,0"
+                           Visibility="{Binding ObjectType, Converter={StaticResource StringToVis}}" />
+                <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding ObjectType}" FontSize="12"
+                           Visibility="{Binding ObjectType, Converter={StaticResource StringToVis}}" />
+
+                <!-- PLC -->
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="PLC:" FontWeight="SemiBold" FontSize="12" Margin="0,2,4,0"
+                           Visibility="{Binding PlcName, Converter={StaticResource StringToVis}}" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding PlcName}" FontSize="12" Margin="0,2,0,0"
+                           Visibility="{Binding PlcName, Converter={StaticResource StringToVis}}" />
+
+                <!-- Project -->
+                <TextBlock Grid.Row="1" Grid.Column="2" Text="Project:" FontWeight="SemiBold" FontSize="12" Margin="12,2,4,0"
+                           Visibility="{Binding ProjectName, Converter={StaticResource StringToVis}}" />
+                <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ProjectName}" FontSize="12" Margin="0,2,0,0"
+                           Visibility="{Binding ProjectName, Converter={StaticResource StringToVis}}" />
+            </Grid>
+        </Border>
+
+        <!-- Row 2: Status and progress -->
+        <Border Grid.Row="2" Padding="12,8" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="8" Height="8" Fill="{Binding State, Converter={StaticResource StateToColor}}"
+                             VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock Text="{Binding State, Converter={StaticResource StateToStatus}}"
+                               FontWeight="SemiBold" FontSize="12"
+                               VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding StatusMessage}"
+                               FontSize="12" Margin="8,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="#666666" />
+                </StackPanel>
+
+                <!-- Progress bar -->
+                <ProgressBar IsIndeterminate="True"
+                             Height="4"
+                             Margin="0,6,0,0"
+                             Visibility="{Binding State, Converter={StaticResource StateToProgress}}"
+                             Foreground="#0078D4" />
+
+                <!-- Progress message -->
+                <TextBlock Text="{Binding ProgressMessage}"
+                           FontSize="11"
+                           Foreground="#888888"
+                           Margin="0,4,0,0"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding ProgressMessage, Converter={StaticResource StringToVis}}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Row 3: Content area (response / error / approval) -->
+        <Grid Grid.Row="3" Margin="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Response content -->
+            <FlowDocumentScrollViewer x:Name="ResponseViewer"
+                                       Grid.Row="0"
+                                       Margin="8"
+                                       Visibility="{Binding ShowResponse, Converter={StaticResource BoolToVis}}"
+                                       VerticalScrollBarVisibility="Auto"
+                                       HorizontalScrollBarVisibility="Disabled"
+                                       BorderThickness="0" />
+
+            <!-- Error display -->
+            <Border Grid.Row="0"
+                    Margin="8"
+                    Visibility="{Binding ShowError, Converter={StaticResource BoolToVis}}"
+                    BorderBrush="#D13438"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Background="#FFF0F0">
+                <StackPanel Margin="12">
+                    <TextBlock Text="⚠ Error" FontWeight="SemiBold" FontSize="14" Foreground="#D13438" Margin="0,0,0,8" />
+                    <TextBlock Text="{Binding ErrorDetails.UserMessage}"
+                               TextWrapping="Wrap"
+                               FontSize="13"
+                               Margin="0,0,0,8" />
+
+                    <!-- Technical details toggle -->
+                    <TextBlock Text="Technical Details"
+                               Foreground="#0078D4"
+                               Cursor="Hand"
+                               FontSize="11"
+                               Margin="0,0,0,4"
+                               MouseLeftButtonDown="ToggleTechnicalDetails_Click">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="▶ Show Technical Details" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ErrorDetails.ShowTechnicalDetails}" Value="True">
+                                        <Setter Property="Text" Value="▼ Hide Technical Details" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <TextBox Text="{Binding ErrorDetails.TechnicalDetails, Mode=OneWay}"
+                             IsReadOnly="True"
+                             FontFamily="Consolas"
+                             FontSize="11"
+                             TextWrapping="Wrap"
+                             MaxHeight="150"
+                             VerticalScrollBarVisibility="Auto"
+                             Background="#FAFAFA"
+                             BorderBrush="#DDDDDD"
+                             Margin="0,0,0,8"
+                             Visibility="{Binding ErrorDetails.ShowTechnicalDetails, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Correlation ID -->
+                    <TextBlock FontSize="11" Foreground="#888888"
+                               Visibility="{Binding ErrorDetails.CorrelationId, Converter={StaticResource StringToVis}}">
+                        <Run Text="Correlation: " /><Run Text="{Binding ErrorDetails.CorrelationId, Mode=OneWay}" />
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <!-- Approval preview placeholder -->
+            <Border Grid.Row="0"
+                    Margin="8"
+                    Visibility="{Binding ShowApproval, Converter={StaticResource BoolToVis}}"
+                    BorderBrush="#FF8C00"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Background="#FFF8E1">
+                <StackPanel Margin="12">
+                    <TextBlock Text="⏳ Approval Required" FontWeight="SemiBold" FontSize="14" Foreground="#FF8C00" Margin="0,0,0,8" />
+                    <TextBlock Text="The AI agent is proposing changes that require your review."
+                               TextWrapping="Wrap"
+                               FontSize="13"
+                               Margin="0,0,0,8" />
+                    <TextBlock Text="Approval workflow will be available in a future update."
+                               FontSize="11"
+                               Foreground="#888888"
+                               FontStyle="Italic" />
+                </StackPanel>
+            </Border>
+
+            <!-- Empty state -->
+            <TextBlock Grid.Row="0"
+                       Text="Waiting for response…"
+                       Foreground="#AAAAAA"
+                       FontSize="13"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+        </Grid>
+
+        <!-- Row 4: Action buttons -->
+        <Border Grid.Row="4" Background="#F6F6F6" BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="12,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Correlation ID -->
+                <TextBlock Grid.Column="0"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           Foreground="#888888"
+                           Visibility="{Binding CorrelationId, Converter={StaticResource StringToVis}}">
+                    <Run Text="Correlation: " /><Run Text="{Binding CorrelationId}" />
+                </TextBlock>
+
+                <!-- Buttons -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <!-- Copy button -->
+                    <Button Content="{x:Static local:Strings.ButtonCopyAll}"
+                            Command="{Binding CopyCommand}"
+                            Padding="12,4"
+                            Margin="0,0,6,0"
+                            Visibility="{Binding ShowResponse, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Cancel button -->
+                    <Button Content="{x:Static local:Strings.ButtonCancel}"
+                            Command="{Binding CancelCommand}"
+                            Padding="12,4"
+                            Margin="0,0,6,0"
+                            Visibility="{Binding CanCancel, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Retry button -->
+                    <Button Content="{x:Static local:Strings.ButtonRetry}"
+                            Command="{Binding RetryCommand}"
+                            Padding="12,4"
+                            Margin="0,0,6,0"
+                            Visibility="{Binding CanRetry, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- Close button -->
+                    <Button Content="{x:Static local:Strings.ButtonClose}"
+                            Command="{Binding CloseCommand}"
+                            Padding="12,4"
+                            IsCancel="True" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

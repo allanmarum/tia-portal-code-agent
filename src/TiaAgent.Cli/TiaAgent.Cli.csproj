@@ -7,6 +7,11 @@
     <RootNamespace>TiaAgent.Cli</RootNamespace>
     <Description>TIA Portal Code Agent CLI global tool</Description>
     <PackageId>TiaAgent.Cli</PackageId>
+    <Authors>Industrix</Authors>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/industrix-com-br/tia-portal-code-agent</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>tia-portal;siemens;plc;ai;agent;mcp;add-in</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,5 +20,9 @@
 
   <ItemGroup>
     <None Include="..\..\artifacts\cli-payload\**\*" Pack="true" PackagePath="tools/net8.0/any/payload/%(RecursiveDir)%(Filename)%(Extension)" Condition="Exists('..\..\artifacts\cli-payload')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

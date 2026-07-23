@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>TiaAgent.ResponseCenter</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <Description>Standalone Agent Response Center for TIA Portal AI Code Agent</Description>
+    <ApplicationIcon />
+    <AssemblyName>TiaAgent.ResponseCenter</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Markdig" />
+  </ItemGroup>
+</Project>
