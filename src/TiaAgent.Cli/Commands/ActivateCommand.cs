@@ -106,7 +106,7 @@ public static class ActivateCommand
 
         ManifestStore.WriteAtomic(layout.CurrentManifestPath, currentManifest);
 
-        DeployAddInIfPresent(versionDir, options.UserAddInsDir, stdout);
+        DeployAddInIfPresent(versionDir, options.UserAddInsDir, options.Json ? TextWriter.Null : stdout);
 
         var report = new ActivateReport
         {
