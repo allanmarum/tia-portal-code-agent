@@ -73,10 +73,10 @@ Install the CLI global tool:
 
 ```powershell
 # Stable release
-dotnet tool install --global Industrix.TiaAgent.Cli
+dotnet tool install --global TiaAgent.Cli
 
 # Prerelease (alpha, beta, RC)
-dotnet tool install --global Industrix.TiaAgent.Cli --prerelease
+dotnet tool install --global TiaAgent.Cli --prerelease
 ```
 
 Then install the payload, restart TIA Portal, and start services:
