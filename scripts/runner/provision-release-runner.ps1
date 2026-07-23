@@ -201,9 +201,10 @@ function Sanitize-WorkspaceEnvironment {
     }
 
     # Clean temporary directories
+    # Note: src/TiaAgent.Cli/payload is a SOURCE directory, not a build artifact.
+    # The build script (pack-cli) handles cleaning/recreating it during packaging.
     $tempPaths = @(
-        "$Root\artifacts",
-        "$Root\src\TiaAgent.Cli\payload"
+        "$Root\artifacts"
     )
 
     foreach ($path in $tempPaths) {
