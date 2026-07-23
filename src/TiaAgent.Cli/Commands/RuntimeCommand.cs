@@ -301,7 +301,7 @@ public static class RuntimeCommand
         }
 
         // 5. Secrets Isolation Check
-        var secretsDir = Path.Combine(layout.RuntimePath, "secrets");
+        var secretsDir = Path.Join(layout.RuntimePath, "secrets");
         report.Checks.Add(new DoctorCheckResult
         {
             Category = "Security",
