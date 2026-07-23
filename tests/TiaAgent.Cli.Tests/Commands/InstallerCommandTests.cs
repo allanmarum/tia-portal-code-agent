@@ -218,6 +218,124 @@ public sealed class InstallerCommandTests : IDisposable
         stderr.ToString().Should().Contain("Version '9.9.9' is not installed");
     }
 
+    [Fact]
+    public void InstallCommand_WithAddIn_DeploysToUserAddIns()
+    {
+        var options = new InstallOptions
+        {
+            Version = "0.2.0-beta.1",
+            PayloadDir = _payloadDir,
+            CustomRoot = _customRoot,
+            UserAddInsDir = _userAddInsDir
+        };
+
+        using var stdout = new StringWriter();
+        var exitCode = InstallCommand.Execute(options, stdout, TextWriter.Null);
+
+        exitCode.Should().Be(0);
+        File.Exists(Path.Combine(_userAddInsDir, "TiaAgent-0.2.0.addin")).Should().BeTrue();
+        stdout.ToString().Should().Contain("Deployed Add-In");
+        stdout.ToString().Should().Contain("Installed Add-In version: 0.2.0");
+    }
+
+    [Fact]
+    public void InstallCommand_WithAddIn_RemovesStaleFiles()
+    {
+        // Pre-install an older version
+        File.WriteAllBytes(Path.Combine(_userAddInsDir, "TiaAgent-0.1.0.addin"), new byte[] { 1, 2, 3 });
+
+        var options = new InstallOptions
+        {
+            Version = "0.2.0-beta.1",
+            PayloadDir = _payloadDir,
+            CustomRoot = _customRoot,
+            UserAddInsDir = _userAddInsDir
+        };
+
+        using var stdout = new StringWriter();
+        InstallCommand.Execute(options, stdout, TextWriter.Null);
+
+        File.Exists(Path.Combine(_userAddInsDir, "TiaAgent-0.1.0.addin")).Should().BeFalse();
+        File.Exists(Path.Combine(_userAddInsDir, "TiaAgent-0.2.0.addin")).Should().BeTrue();
+        stdout.ToString().Should().Contain("Removed stale Add-In: TiaAgent-0.1.0.addin");
+    }
+
+    [Fact]
+    public void InstallCommand_IdempotentRepeatedInstallation()
+    {
+        var options = new InstallOptions
+        {
+            Version = "0.2.0-beta.1",
+            PayloadDir = _payloadDir,
+            CustomRoot = _customRoot,
+            UserAddInsDir = _userAddInsDir
+        };
+
+        // First install
+        var exitCode1 = InstallCommand.Execute(options, TextWriter.Null, TextWriter.Null);
+        exitCode1.Should().Be(0);
+
+        // Second install (already installed)
+        using var stdout = new StringWriter();
+        var exitCode2 = InstallCommand.Execute(options, stdout, TextWriter.Null);
+        exitCode2.Should().Be(0);
+        stdout.ToString().Should().Contain("is already installed");
+        File.Exists(Path.Combine(_userAddInsDir, "TiaAgent-0.2.0.addin")).Should().BeTrue();
+    }
+
+    [Fact]
+    public void InstallCommand_NoAddInPayload_SucceedsWithFallbackMessage()
+    {
+        // Create payload without AddIn directory
+        var emptyPayloadDir = Path.Combine(_tempDirectory, "payload_no_addin");
+        var bridgeDir = Path.Combine(emptyPayloadDir, "Bridge");
+        Directory.CreateDirectory(bridgeDir);
+        File.WriteAllBytes(Path.Combine(bridgeDir, "TiaAgent.Bridge.dll"), new byte[] { 1, 2, 3 });
+
+        var bridgeHash = PayloadStore.ComputeSha256(Path.Combine(bridgeDir, "TiaAgent.Bridge.dll"));
+        var manifest = new PayloadManifest
+        {
+            ProductVersion = "0.2.0-beta.1",
+            CommitSha = "testsha",
+            Components =
+            {
+                ["bridge"] = new PayloadComponentMetadata
+                {
+                    RelativePath = "Bridge/TiaAgent.Bridge.dll",
+                    Version = "0.2.0-beta.1",
+                    Sha256Hash = bridgeHash,
+                    SizeBytes = 3
+                }
+            },
+            Files =
+            {
+                new PayloadFileEntry
+                {
+                    RelativePath = "Bridge/TiaAgent.Bridge.dll",
+                    Sha256Hash = bridgeHash,
+                    SizeBytes = 3
+                }
+            }
+        };
+        PayloadStore.WriteManifest(emptyPayloadDir, manifest);
+
+        var options = new InstallOptions
+        {
+            Version = "0.2.0-beta.1",
+            PayloadDir = emptyPayloadDir,
+            CustomRoot = _customRoot,
+            UserAddInsDir = _userAddInsDir
+        };
+
+        using var stdout = new StringWriter();
+        var exitCode = InstallCommand.Execute(options, stdout, TextWriter.Null);
+
+        exitCode.Should().Be(0);
+        stdout.ToString().Should().Contain("Successfully installed");
+        // Should not have deployed to UserAddIns since no .addin was present
+        File.Exists(Path.Combine(_userAddInsDir, "TiaAgent-0.2.0.addin")).Should().BeFalse();
+    }
+
     private static void CreateDummyPayload(string payloadDir, string version)
     {
         var bridgeDir = Path.Combine(payloadDir, "Bridge");

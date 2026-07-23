@@ -7,8 +7,9 @@ using TiaAgent.Contracts.Bridge;
 namespace TiaAgent.AddIn.Providers;
 
 /// <summary>
-/// Captures a SelectionSnapshot from IEngineeringObject using defensive reflection.
-/// Each property access is wrapped in try/catch to handle missing properties gracefully.
+/// Captures a SelectionSnapshot from IEngineeringObject.
+/// Uses direct interface members only — no reflection (reflection on COM-interop
+/// types triggers VerificationException in TIA Portal's partial-trust sandbox).
 /// </summary>
 public static class SelectionSnapshotFactory
 {
@@ -17,49 +18,36 @@ public static class SelectionSnapshotFactory
         if (obj == null)
             throw new ArgumentNullException(nameof(obj));
 
+        var name = GetSafeName(obj);
+        var typeName = obj.GetType().Name;
+
         return new SelectionSnapshot
         {
-            Name = GetProperty(obj, "Name") ?? obj.ToString() ?? "Unknown",
-            ObjectType = GetProperty(obj, "ObjectType") ?? obj.GetType().Name,
-            RuntimeType = GetProperty(obj, "RuntimeType") ?? obj.GetType().FullName ?? "",
-            PlcName = GetProperty(obj, "PlcName") ?? "",
-            TiaPath = GetTiaPath(obj),
-            Language = GetProperty(obj, "Language") ?? ""
+            Name = name,
+            ObjectType = typeName,
+            RuntimeType = obj.GetType().FullName ?? "",
+            PlcName = "",
+            TiaPath = name,
+            Language = ""
         };
     }
 
-    private static string? GetProperty(object obj, string propertyName)
+    /// <summary>
+    /// Gets a human-readable name for the selected object.
+    /// Uses ToString() — avoids reflection on COM-interop types which triggers
+    /// VerificationException in TIA Portal's partial-trust sandbox.
+    /// </summary>
+    private static string GetSafeName(IEngineeringObject obj)
     {
         try
         {
-            var prop = obj.GetType().GetProperty(propertyName);
-            return prop?.GetValue(obj) as string;
+            return obj.ToString() ?? "Unknown";
         }
         catch (Exception ex)
         {
-            AddInLogger.Warn($"Failed to read property '{propertyName}' from {obj.GetType().Name}: {ex.Message}");
-            return null;
+            AddInLogger.Warn($"Failed to get name from {obj.GetType().Name}: {ex.Message}");
+            return "Unknown";
         }
-    }
-
-    private static string GetTiaPath(IEngineeringObject obj)
-    {
-        try
-        {
-            var path = obj.GetType().GetProperty("Path");
-            if (path != null)
-            {
-                var value = path.GetValue(obj);
-                if (value != null)
-                    return value.ToString() ?? "";
-            }
-        }
-        catch (Exception ex)
-        {
-            AddInLogger.Warn($"Failed to read TIA path: {ex.Message}");
-        }
-
-        return obj.ToString() ?? "";
     }
 }
 #endif

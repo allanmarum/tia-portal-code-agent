@@ -22,7 +22,9 @@ public sealed class RuntimeInfoMetadata
 /// </summary>
 public static class RuntimeCompatibilityRegistry
 {
-    private static readonly Regex s_versionRegex = new Regex(@"(?:v)?(?<ver>\d+\.\d+(?:\.\d+)?(?:\.\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    // RegexOptions.Compiled removed: generates dynamic IL via Reflection.Emit,
+    // which requires ReflectionPermission in partial-trust sandboxes (TIA Portal Add-In).
+    private static readonly Regex s_versionRegex = new Regex(@"(?:v)?(?<ver>\d+\.\d+(?:\.\d+)?(?:\.\d+)?)", RegexOptions.IgnoreCase);
 
     public static readonly Dictionary<string, RuntimeInfoMetadata> KnownRuntimes = new Dictionary<string, RuntimeInfoMetadata>(StringComparer.OrdinalIgnoreCase)
     {

@@ -1,32 +1,25 @@
 #if SIEMENS
 using System;
 using TiaAgent.AddIn.Bridge;
-using TiaAgent.AddIn.Diagnostics;
 using TiaAgent.Contracts.Bridge;
 
 namespace TiaAgent.AddIn;
 
 /// <summary>
-/// Static service locator for the TIA Portal Add-In.
-/// Initialized once when the Add-In loads; provides access to Bridge client
-/// without requiring constructor injection (TIA Portal instantiates Add-In classes directly).
+/// Service locator for the TIA Portal Add-In.
+/// Configuration is loaded lazily on first access — no file I/O at assembly load time.
 /// </summary>
 public static class AddInServices
 {
     private static IAgentBridgeClient? _bridgeClient;
-    private static BridgeClientConfig? _config;
+    private static AddInConfig? _config;
     private static readonly object _lock = new();
 
-    static AddInServices()
-    {
-        AddInLogger.Startup();
-        AddInLogger.Info("AddInServices static constructor called");
-    }
-
     /// <summary>
-    /// Gets the Bridge client configuration, loading it lazily on first access.
+    /// Bridge client configuration. Loaded lazily from hardcoded defaults.
+    /// No file I/O — avoids FileIOPermission in partial-trust sandbox.
     /// </summary>
-    public static BridgeClientConfig Config
+    public static AddInConfig Config
     {
         get
         {
@@ -34,7 +27,7 @@ public static class AddInServices
             {
                 lock (_lock)
                 {
-                    _config ??= BridgeClientConfig.Load();
+                    _config ??= new AddInConfig();
                 }
             }
             return _config;
@@ -42,7 +35,7 @@ public static class AddInServices
     }
 
     /// <summary>
-    /// Gets the Bridge client, initializing it lazily on first access.
+    /// Bridge HTTP client. Created lazily on first access.
     /// </summary>
     public static IAgentBridgeClient BridgeClient
     {
@@ -56,17 +49,6 @@ public static class AddInServices
                 }
             }
             return _bridgeClient;
-        }
-    }
-
-    /// <summary>
-    /// Allows tests or initialization code to override the Bridge client.
-    /// </summary>
-    public static void SetBridgeClient(IAgentBridgeClient client)
-    {
-        lock (_lock)
-        {
-            _bridgeClient = client;
         }
     }
 }

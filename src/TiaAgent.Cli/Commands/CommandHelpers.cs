@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using TiaAgent.Cli.Installation;
 
 namespace TiaAgent.Cli.Commands;
 
@@ -30,6 +31,7 @@ internal static class CommandHelpers
 
     /// <summary>
     /// Deploys .addin files from <paramref name="versionDir"/>/AddIn to the Siemens UserAddIns directory.
+    /// Uses the shared <see cref="AddInDeployer"/> service for consistent deployment behavior.
     /// Logs each deployment to <paramref name="stdout"/>. Failures are logged as warnings and do not abort.
     /// </summary>
     internal static void DeployAddInIfPresent(string versionDir, string? customUserAddInsDir, TextWriter stdout)
@@ -39,37 +41,21 @@ internal static class CommandHelpers
             return;
         }
 
-        var userAddInsDir = ResolveUserAddInsDir(customUserAddInsDir);
+        // Derive fallback base directory from versionDir (versions/VERSION → versions → root)
+        var fallbackBaseDir = Path.GetDirectoryName(Path.GetDirectoryName(versionDir))
+            ?? Path.GetTempPath();
 
-        var addinSubDir = Path.Combine(versionDir, "AddIn");
-        if (!Directory.Exists(addinSubDir))
+        var result = AddInDeployer.Deploy(versionDir, customUserAddInsDir, fallbackBaseDir, stdout);
+
+        if (result.Status == AddInDeploymentStatus.NoAddInPackage)
         {
+            // Silent — no Add-In to deploy is expected for dev builds
             return;
         }
 
-        var addinFiles = Directory.GetFiles(addinSubDir, "*.addin");
-        if (addinFiles.Length == 0)
+        if (result.Status == AddInDeploymentStatus.Error)
         {
-            return;
-        }
-
-        Directory.CreateDirectory(userAddInsDir);
-        foreach (var addinFile in addinFiles)
-        {
-            var destFile = Path.Combine(userAddInsDir, Path.GetFileName(addinFile));
-            try
-            {
-                File.Copy(addinFile, destFile, overwrite: true);
-                stdout.WriteLine($"Deployed Add-In artifact '{Path.GetFileName(addinFile)}' to '{userAddInsDir}'.");
-            }
-            catch (IOException ex)
-            {
-                stdout.WriteLine($"Warning: Failed to deploy Add-In artifact '{Path.GetFileName(addinFile)}': {ex.Message}");
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                stdout.WriteLine($"Warning: Failed to deploy Add-In artifact '{Path.GetFileName(addinFile)}': {ex.Message}");
-            }
+            stdout.WriteLine($"Warning: Add-In deployment encountered an error: {result.ErrorMessage}");
         }
     }
 }

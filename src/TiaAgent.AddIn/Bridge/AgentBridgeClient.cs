@@ -17,10 +17,10 @@ namespace TiaAgent.AddIn.Bridge;
 public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
 {
     private readonly HttpClient _httpClient;
-    private readonly BridgeClientConfig _config;
+    private readonly AddInConfig _config;
     private readonly bool _ownsHttpClient;
 
-    public AgentBridgeClient(BridgeClientConfig config)
+    public AgentBridgeClient(AddInConfig config)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _httpClient = new HttpClient
@@ -32,7 +32,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
         _ownsHttpClient = true;
     }
 
-    public AgentBridgeClient(HttpClient httpClient, BridgeClientConfig config)
+    public AgentBridgeClient(HttpClient httpClient, AddInConfig config)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -40,7 +40,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
         _ownsHttpClient = false;
     }
 
-    private void ConfigureAuthentication(HttpClient client, BridgeClientConfig config)
+    private void ConfigureAuthentication(HttpClient client, AddInConfig config)
     {
         if (!string.IsNullOrEmpty(config.AuthToken))
         {
