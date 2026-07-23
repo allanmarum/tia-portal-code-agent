@@ -152,7 +152,7 @@ public static class ActivateCommand
         if (string.IsNullOrWhiteSpace(userAddInsDir))
         {
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            userAddInsDir = Path.Combine(appData, "Siemens", "Automation", "Portal V21", "UserAddIns");
+            userAddInsDir = Path.Join(appData, "Siemens", "Automation", "Portal V21", "UserAddIns");
         }
 
         var addinSubDir = Path.Combine(versionDir, "AddIn");
