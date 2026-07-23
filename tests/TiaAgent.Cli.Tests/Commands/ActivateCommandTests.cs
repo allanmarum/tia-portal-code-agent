@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -40,8 +41,20 @@ public sealed class ActivateCommandTests : IDisposable
     {
         if (Directory.Exists(_tempDirectory))
         {
-            try { Directory.Delete(_tempDirectory, recursive: true); } catch { }
+            try
+            {
+                Directory.Delete(_tempDirectory, recursive: true);
+            }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"Failed to remove test directory '{_tempDirectory}': {ex}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Debug.WriteLine($"Failed to remove test directory '{_tempDirectory}': {ex}");
+            }
         }
+
         GC.SuppressFinalize(this);
     }
 
