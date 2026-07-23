@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using TiaAgent.Cli.Commands;
 using TiaAgent.Cli.Layout;
+using TiaAgent.Contracts.Runtime;
 
 namespace TiaAgent.Cli.Supervisor;
 
@@ -70,6 +71,13 @@ public static class SupervisorEngine
             var (defaultRuntime, runtimeMode) = LoadRuntimeConfig(layout);
             var (prefBridgePort, prefRuntimePort, rangeStart, rangeEnd) = LoadSettings(layout, options.Config);
             stdout.WriteLine($"  Runtime: {defaultRuntime} (mode={runtimeMode})");
+
+            // Fail fast before startup if selected runtime is unknown
+            if (!RuntimeCompatibilityRegistry.IsKnownRuntime(defaultRuntime))
+            {
+                var avail = string.Join(", ", RuntimeCompatibilityRegistry.KnownRuntimes.Keys.OrderBy(k => k));
+                throw new InvalidOperationException($"Unknown runtime '{defaultRuntime}'. Available runtimes: {avail}");
+            }
 
             bool runtimeNeedsServer = string.Equals(runtimeMode, "server", StringComparison.OrdinalIgnoreCase);
 
@@ -580,7 +588,12 @@ public static class SupervisorEngine
         var defaultRuntime = "opencode";
         var runtimeMode = "server";
 
-        if (File.Exists(configPath))
+        var envRuntime = Environment.GetEnvironmentVariable("TIA_AGENT_RUNTIME");
+        if (!string.IsNullOrWhiteSpace(envRuntime))
+        {
+            defaultRuntime = envRuntime.Trim();
+        }
+        else if (File.Exists(configPath))
         {
             try
             {
@@ -608,6 +621,15 @@ public static class SupervisorEngine
                 }
             }
             catch { }
+        }
+
+        if (RuntimeCompatibilityRegistry.GetMetadata(defaultRuntime) != null)
+        {
+            var meta = RuntimeCompatibilityRegistry.GetMetadata(defaultRuntime)!;
+            if (!meta.SupportedModes.Contains(runtimeMode))
+            {
+                runtimeMode = meta.DefaultMode;
+            }
         }
 
         return (defaultRuntime, runtimeMode);

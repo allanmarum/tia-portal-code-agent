@@ -389,21 +389,33 @@ public static class DoctorCommand
     private static void CheckRuntimesAndMcp(TiaAgentLayout layout, DoctorReport report)
     {
         string defaultRuntime = "opencode";
+        TiaAgentConfig? config = null;
         if (File.Exists(layout.ConfigPath))
         {
             try
             {
-                var config = ManifestStore.Read<TiaAgentConfig>(layout.ConfigPath);
+                config = ManifestStore.Read<TiaAgentConfig>(layout.ConfigPath);
                 defaultRuntime = config.DefaultRuntime ?? "opencode";
             }
             catch { }
         }
 
-        var runtimesToCheck = new[] { "opencode", "mimo", "claude" };
+        var envRuntime = Environment.GetEnvironmentVariable("TIA_AGENT_RUNTIME");
+        if (!string.IsNullOrWhiteSpace(envRuntime))
+        {
+            defaultRuntime = envRuntime;
+        }
+
+        var runtimesToCheck = RuntimeCompatibilityRegistry.KnownRuntimes.Keys.ToList();
         foreach (var runtimeId in runtimesToCheck)
         {
+            var meta = RuntimeCompatibilityRegistry.GetMetadata(runtimeId)!;
+            var entryConfig = config?.Runtimes != null && config.Runtimes.TryGetValue(runtimeId, out var cfg) ? cfg : null;
             var isDefault = string.Equals(runtimeId, defaultRuntime, StringComparison.OrdinalIgnoreCase);
-            var onPath = IsExecutableOnPath(runtimeId);
+
+            var mode = entryConfig?.Mode ?? meta.DefaultMode;
+            var exeName = entryConfig?.Executable ?? runtimeId;
+            var onPath = IsExecutableOnPath(exeName);
 
             if (onPath)
             {
@@ -412,7 +424,7 @@ public static class DoctorCommand
                     Category = "Runtime",
                     Name = $"Agent Runtime ({runtimeId})",
                     Status = "OK",
-                    Details = $"Executable '{runtimeId}' found on PATH." + (isDefault ? " (Default runtime)" : "")
+                    Details = $"Executable '{exeName}' found on PATH (Mode: {mode}, Min: v{meta.MinimumVersion}, Tested: v{meta.TestedVersion})." + (isDefault ? " [Default Runtime]" : "")
                 });
             }
             else if (isDefault)
@@ -422,7 +434,7 @@ public static class DoctorCommand
                     Category = "Runtime",
                     Name = $"Agent Runtime ({runtimeId})",
                     Status = "WARN",
-                    Details = $"Default runtime '{runtimeId}' is not found on PATH.",
+                    Details = $"Default runtime '{runtimeId}' executable '{exeName}' is not found on PATH.",
                     Recommendation = $"Install '{runtimeId}' CLI or update executable path in config.json."
                 });
             }
@@ -433,7 +445,7 @@ public static class DoctorCommand
                     Category = "Runtime",
                     Name = $"Agent Runtime ({runtimeId})",
                     Status = "OK",
-                    Details = $"Optional runtime '{runtimeId}' not on PATH."
+                    Details = $"Optional runtime '{runtimeId}' (executable: '{exeName}') not on PATH."
                 });
             }
         }
