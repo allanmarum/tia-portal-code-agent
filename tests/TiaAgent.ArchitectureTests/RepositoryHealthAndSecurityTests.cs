@@ -142,7 +142,7 @@ public sealed class RepositoryHealthAndSecurityTests
         content.Should().Contain("pack-addin", "Release workflow must automate Add-In packaging");
         content.Should().Contain("verify-addin", "Release workflow must verify the Add-In package");
         content.Should().Contain("provision-release-runner.ps1", "Release workflow must sanitize the release runner workspace");
-        content.Should().Contain("v*", "Release workflow must trigger on version tag pushes");
+        content.Should().Contain("v[0-9]+", "Release workflow must trigger on version tag pushes");
     }
 
     [Fact]

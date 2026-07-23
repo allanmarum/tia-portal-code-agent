@@ -1,0 +1,40 @@
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  security-events: write
+
+jobs:
+  codeql:
+    name: CodeQL static analysis
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          queries: security-extended,security-and-quality
+
+      - name: Build solution for CodeQL analysis
+        shell: pwsh
+        run: ./build.ps1 build
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
