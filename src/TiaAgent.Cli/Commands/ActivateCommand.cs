@@ -83,29 +83,26 @@ public static class ActivateCommand
         bool isRegistered = installations.Versions.ContainsKey(targetVersion);
         bool directoryExists = Directory.Exists(versionDir);
 
-        if (!isRegistered || !directoryExists)
+        if ((!isRegistered || !directoryExists) && !options.Force)
         {
-            if (!options.Force)
+            var err = $"Version '{targetVersion}' is not installed.";
+            if (options.Json)
             {
-                var err = $"Version '{targetVersion}' is not installed.";
-                if (options.Json)
+                stdout.WriteLine(JsonSerializer.Serialize(new ActivateReport { Success = false, Error = err }, s_jsonOptions));
+            }
+            else
+            {
+                stderr.WriteLine(err);
+                if (installations.Versions.Count > 0)
                 {
-                    stdout.WriteLine(JsonSerializer.Serialize(new ActivateReport { Success = false, Error = err }, s_jsonOptions));
+                    stderr.WriteLine($"Installed versions: {string.Join(", ", installations.Versions.Keys)}");
                 }
                 else
                 {
-                    stderr.WriteLine(err);
-                    if (installations.Versions.Count > 0)
-                    {
-                        stderr.WriteLine($"Installed versions: {string.Join(", ", installations.Versions.Keys)}");
-                    }
-                    else
-                    {
-                        stderr.WriteLine("No TIA Agent versions are currently installed.");
-                    }
+                    stderr.WriteLine("No TIA Agent versions are currently installed.");
                 }
-                return 1;
             }
+            return 1;
         }
 
         var currentManifest = new CurrentManifest
