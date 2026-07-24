@@ -262,7 +262,10 @@ public sealed class BridgeController : IDisposable
             RuntimeId = status.RuntimeId,
             RuntimeVersion = status.RuntimeVersion
         };
-        await WriteJsonResponseAsync(response, 200, SerializeTaskStatus(result)).ConfigureAwait(false);
+        var json = SerializeTaskStatus(result);
+        var jsonBytes = Encoding.UTF8.GetBytes(json);
+        _logger.Debug($"HandleGetTaskStatus: response {result.Response?.Length ?? 0} chars → {jsonBytes.Length} bytes (UTF-8)");
+        await WriteJsonResponseAsync(response, 200, json).ConfigureAwait(false);
     }
 
     private async Task HandleCancelTaskAsync(string taskId, HttpListenerResponse response)
@@ -478,8 +481,32 @@ public sealed class BridgeController : IDisposable
     private static string SerializeDiagnostics(object d) =>
         System.Text.Json.JsonSerializer.Serialize(d);
 
-    private static string EscapeJson(string? s) =>
-        (s ?? "").Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
+    private static string EscapeJson(string? s)
+    {
+        if (s == null) return "";
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var c in s)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
+                default:
+                    // Escape control characters U+0000-U+001F as required by RFC 8259
+                    if (c < 0x20)
+                        sb.AppendFormat("\\u{0:x4}", (int)c);
+                    else
+                        sb.Append(c);
+                    break;
+            }
+        }
+        return sb.ToString();
+    }
 
     private BridgeTaskRequest? DeserializeTaskRequest(string json)
     {

@@ -1,4 +1,6 @@
+using System.Text;
 using FluentAssertions;
+using TiaAgent.AddIn.Bridge;
 using Xunit;
 
 namespace TiaAgent.AddIn.Tests;
@@ -334,5 +336,229 @@ public class JsonUnescapeTests
         var result = ExtractAndUnescape(
             "{\"text\":\"C\\u00f3digo: \\\"teste\\\"\"}", "text");
         result.Should().Be("Código: \"teste\"");
+    }
+
+    // ── Mojibake repair tests ──
+    // On .NET 8 (test runner), code page 1252 requires CodePagesEncodingProvider.
+    // On .NET Framework 4.8 (production Add-In), it's always available.
+    // These tests use ISO-8859-1 (code page 28591) which is available on all platforms.
+
+    private static string SimulateMojibake(string original)
+    {
+        // Simulate: UTF-8 bytes read as ISO-8859-1 (same as Windows-1252 for 0x80-0xFF)
+        var utf8Bytes = Encoding.UTF8.GetBytes(original);
+        return Encoding.GetEncoding(28591).GetString(utf8Bytes);
+    }
+
+    [Fact]
+    public void RepairMojibake_BoxDrawingHorizontal()
+    {
+        // ─ (U+2500) = UTF-8 bytes E2 94 80 → ISO-8859-1: â\x94\x80
+        var mojibake = SimulateMojibake("─");
+        var repaired = AgentBridgeClient.RepairMojibake(mojibake);
+        repaired.Should().Be("─");
+    }
+
+    [Fact]
+    public void RepairMojibake_BoxDrawingDownRight()
+    {
+        // ┐ (U+2510) = UTF-8 bytes E2 94 90
+        var mojibake = SimulateMojibake("┐");
+        var repaired = AgentBridgeClient.RepairMojibake(mojibake);
+        repaired.Should().Be("┐");
+    }
+
+    [Fact]
+    public void RepairMojibake_BoxDrawingVerticalRight()
+    {
+        // ├ (U+251C) = UTF-8 bytes E2 94 9C
+        var mojibake = SimulateMojibake("├");
+        var repaired = AgentBridgeClient.RepairMojibake(mojibake);
+        repaired.Should().Be("├");
+    }
+
+    [Fact]
+    public void RepairMojibake_RightwardsArrow()
+    {
+        // → (U+2192) = UTF-8 bytes E2 86 92 → ISO-8859-1: â\x86\x92
+        var mojibake = SimulateMojibake("→");
+        var repaired = AgentBridgeClient.RepairMojibake(mojibake);
+        repaired.Should().Be("→");
+    }
+
+    [Fact]
+    public void RepairMojibake_MixedAsciiAndBoxDrawing()
+    {
+        var original = "Tag_1 ─── Tag_3";
+        var mojibake = SimulateMojibake(original);
+        mojibake.Should().NotBe(original); // Confirm it's garbled
+        var repaired = AgentBridgeClient.RepairMojibake(mojibake);
+        repaired.Should().Be(original);
+    }
+
+    [Fact]
+    public void RepairMojibake_PlcLadderDiagramLine()
+    {
+        // Simulates the user's actual garbled line
+        var original = "Tag_1 (I0.0) AND NOT Tag_2 (I0.1) → Tag_3 (Q0.0)";
+        var mojibake = SimulateMojibake(original);
+        var repaired = AgentBridgeClient.RepairMojibake(mojibake);
+        repaired.Should().Be(original);
+    }
+
+    [Fact]
+    public void RepairMojibake_PlainAscii_NoChange()
+    {
+        // Plain ASCII should pass through unchanged (no high chars)
+        var text = "Hello World 123";
+        AgentBridgeClient.RepairMojibake(text).Should().Be(text);
+    }
+
+    [Fact]
+    public void RepairMojibake_EmptyString_NoChange()
+    {
+        AgentBridgeClient.RepairMojibake("").Should().Be("");
+    }
+
+    // ── End-to-end encoding validation tests ──
+    // These verify that the full data path preserves UTF-8 characters correctly:
+    // Unicode string → EscapeJson → UTF-8 encode → UTF-8 decode → ExtractJsonString → UnescapeJsonString
+
+    /// <summary>
+    /// Simulates the full Bridge→Add-In round-trip for a JSON string value.
+    /// The Bridge serializes with EscapeJson, encodes as UTF-8 bytes.
+    /// The Add-In decodes as UTF-8, then ExtractJsonString + UnescapeJsonString.
+    /// </summary>
+    private static string SimulateBridgeRoundTrip(string original)
+    {
+        // Bridge side: EscapeJson + UTF-8 encode
+        var escaped = TestEscapeJson(original);
+        var json = $"{{\"response\":\"{escaped}\"}}";
+        var bytes = Encoding.UTF8.GetBytes(json);
+
+        // Add-In side: UTF-8 decode + ExtractJsonString + UnescapeJsonString
+        var decodedJson = Encoding.UTF8.GetString(bytes);
+        return ExtractAndUnescape(decodedJson, "response") ?? "";
+    }
+
+    /// <summary>
+    /// Mirrors BridgeController.EscapeJson for testing purposes.
+    /// </summary>
+    private static string TestEscapeJson(string? s)
+    {
+        if (s == null) return "";
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var c in s)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '"': sb.Append("\\\""); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
+                default:
+                    if (c < 0x20)
+                        sb.AppendFormat("\\u{0:x4}", (int)c);
+                    else
+                        sb.Append(c);
+                    break;
+            }
+        }
+        return sb.ToString();
+    }
+
+    [Fact]
+    public void RoundTrip_PortugueseAccents()
+    {
+        var original = "ação crítica configuração automação informação";
+        SimulateBridgeRoundTrip(original).Should().Be(original);
+    }
+
+    [Fact]
+    public void RoundTrip_Emojis()
+    {
+        var original = "🔴 😀 🎉 ★ ☆ ♠ ♣";
+        SimulateBridgeRoundTrip(original).Should().Be(original);
+    }
+
+    [Fact]
+    public void RoundTrip_EmDashAndEuro()
+    {
+        var original = "preço — €100 © 2024";
+        SimulateBridgeRoundTrip(original).Should().Be(original);
+    }
+
+    [Fact]
+    public void RoundTrip_ArrowsAndCheckmarks()
+    {
+        var original = "→ ← ↑ ↓ ✓ ✔ ✗ ✕";
+        SimulateBridgeRoundTrip(original).Should().Be(original);
+    }
+
+    [Fact]
+    public void RoundTrip_BoxDrawing()
+    {
+        var original = "┌─────┐\n│ Hello │\n└─────┘";
+        SimulateBridgeRoundTrip(original).Should().Be(original);
+    }
+
+    [Fact]
+    public void RoundTrip_MixedContent_FullExample()
+    {
+        // The exact example from the user's requirements
+        var original = "🔴 Ação crítica — configuração, automação, informação, € © ✓ →";
+        SimulateBridgeRoundTrip(original).Should().Be(original);
+    }
+
+    [Fact]
+    public void RoundTrip_MixedContent_WithMarkdown()
+    {
+        var original = "# Análise do Código\n\nO código apresenta os seguintes problemas:\n\n- **Bug 1**: Falta de tratamento de exceção 🔴\n- **Bug 2**: Variável não utilizada\n\n→ Recomendação: Adicionar try-catch";
+        SimulateBridgeRoundTrip(original).Should().Be(original);
+    }
+
+    [Fact]
+    public void RoundTrip_Multilingual()
+    {
+        var original = "Português: ação — Español: corazón — Français: été — Deutsch: Straße — Italiano: città";
+        SimulateBridgeRoundTrip(original).Should().Be(original);
+    }
+
+    [Fact]
+    public void RoundTrip_ControlCharactersPreserved()
+    {
+        var original = "line1\nline2\ttabbed\r\nCRLF";
+        SimulateBridgeRoundTrip(original).Should().Be(original);
+    }
+
+    [Fact]
+    public void RoundTrip_EscapeSequencesPreserved()
+    {
+        var original = "path\\to\\file and \"quoted\" text";
+        SimulateBridgeRoundTrip(original).Should().Be(original);
+    }
+
+    [Fact]
+    public void RoundTrip_LongResponseWithUnicode()
+    {
+        // Simulates a realistic long AI response with mixed content
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("## Relatório de Análise 🔍");
+        sb.AppendLine();
+        sb.AppendLine("O módulo de automação industrial © 2024 apresenta:");
+        sb.AppendLine();
+        for (int i = 0; i < 50; i++)
+        {
+            sb.AppendLine($"- Item {i}:configuração → status ✓ (preço: €{i * 10})");
+        }
+        sb.AppendLine();
+        sb.AppendLine("### Conclusão");
+        sb.AppendLine("Todas as vértecas estão funcionando corretamente. — Equipe Técnica");
+
+        var original = sb.ToString().TrimEnd();
+        SimulateBridgeRoundTrip(original).Should().Be(original);
     }
 }

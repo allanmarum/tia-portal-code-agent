@@ -25,7 +25,7 @@ public sealed class OpenCodeClient : IDisposable
             // Accept any HTTP response (including 503) as "server is running".
             // mimo serve returns 503 for /health when Web UI is unavailable in headless mode,
             // but the server itself is running and ready to accept MCP requests.
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var body = await ReadResponseUtf8Async(response, cancellationToken).ConfigureAwait(false);
             return new HealthResponse { Available = true, RawJson = body };
         }
         catch (Exception ex)
@@ -42,7 +42,7 @@ public sealed class OpenCodeClient : IDisposable
         try
         {
             var response = await _httpClient.PostAsync(url, content, cancellationToken).ConfigureAwait(false);
-            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var body = await ReadResponseUtf8Async(response, cancellationToken).ConfigureAwait(false);
             return new SessionResponse
             {
                 Success = response.IsSuccessStatusCode,
@@ -65,7 +65,7 @@ public sealed class OpenCodeClient : IDisposable
         var payload = $"{{\"message\":\"{EscapeJson(message)}\"}}";
         var content = new StringContent(payload, Encoding.UTF8, "application/json");
         var response = await _httpClient.PostAsync($"{_baseUrl}/sessions/{sessionId}/messages", content, cancellationToken).ConfigureAwait(false);
-        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var body = await ReadResponseUtf8Async(response, cancellationToken).ConfigureAwait(false);
         return new MessageResponse
         {
             Success = response.IsSuccessStatusCode,
@@ -83,6 +83,18 @@ public sealed class OpenCodeClient : IDisposable
     }
 
     public void Dispose() => _httpClient.Dispose();
+
+    /// <summary>
+    /// Reads HTTP response content as a string using explicit UTF-8 encoding.
+    /// Prevents encoding corruption when the server response lacks a charset
+    /// in the Content-Type header.
+    /// </summary>
+    private static async Task<string> ReadResponseUtf8Async(
+        HttpResponseMessage response, CancellationToken cancellationToken = default)
+    {
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        return Encoding.UTF8.GetString(bytes);
+    }
 
     private static string EscapeJson(string s) =>
         s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t");

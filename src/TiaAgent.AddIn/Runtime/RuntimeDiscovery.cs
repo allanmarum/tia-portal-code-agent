@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TiaAgent.AddIn.Diagnostics;
@@ -80,7 +81,11 @@ public sealed class RuntimeDiscovery
             if (!response.IsSuccessStatusCode)
                 return false;
 
-            var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            // Read as bytes and decode as UTF-8 explicitly.
+            // On net48, ReadAsStringAsync() defaults to Latin-1 when Content-Type
+            // lacks charset, corrupting non-ASCII characters (e.g. ΓöÇ instead of ─).
+            var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+            var json = Encoding.UTF8.GetString(bytes);
 
             // Check service identity
             if (!string.IsNullOrEmpty(expectedService))

@@ -21,9 +21,6 @@
     <AssemblyInfo>
       <Assembly>TiaAgent.Contracts.dll</Assembly>
     </AssemblyInfo>
-    <AssemblyInfo>
-      <Assembly>Markdig.dll</Assembly>
-    </AssemblyInfo>
   </AdditionalAssemblies>
 
   <RequiredPermissions>

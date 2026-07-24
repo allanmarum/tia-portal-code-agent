@@ -15,8 +15,8 @@ namespace TiaAgent.AddIn.Ui;
 /// Displays results to the user. Attempts WPF Window first; falls back to MessageBox.
 ///
 /// Rendering strategy:
-/// 1. MarkdownFlowDocumentRenderer (Markdig + WPF FlowDocument) — rich formatting
-/// 2. PlainTextFlowDocumentHelper (pure WPF) — monospace plain text, no Markdig dependency
+/// 1. SimpleMarkdownFlowDocumentRenderer (dependency-free WPF) — rich formatting
+/// 2. PlainTextFlowDocumentHelper (pure WPF) — monospace plain text fallback
 /// 3. MessageBox (Win32) — last resort, always works
 ///
 /// WPF requires:
@@ -32,47 +32,10 @@ public static class AssistantPanelFactory
 {
     private static bool? _wpfAvailable;
 
-    // Markdown renderer: lazy-loaded, may fail if Markdig dependencies are missing.
-    private static bool s_rendererLoadFailed;
-
     // Matches "[Runtime: claude]\n\n" prefix added by ProjectTreeProvider
     private static readonly Regex s_runtimePrefixRegex = new(
         @"^\[Runtime:\s*(.+?)\]\s*\n\s*\n",
         RegexOptions.Compiled);
-
-    private static MarkdownFlowDocumentRenderer? GetRenderer()
-    {
-        if (s_rendererLoadFailed)
-        {
-            AddInLogger.Debug("GetRenderer: s_rendererLoadFailed is true, returning null.");
-            return null;
-        }
-
-        // Always try to create a fresh instance — the renderer's EnsureInitialized()
-        // handles retry logic for transient failures (VerificationException in partial trust).
-        try
-        {
-            var renderer = new MarkdownFlowDocumentRenderer();
-            AddInLogger.Debug($"GetRenderer: instance created. IsAvailable={MarkdownFlowDocumentRenderer.IsAvailable}");
-            return renderer;
-        }
-        catch (TypeInitializationException ex)
-        {
-            // Static constructor failed — the type is permanently broken for this AppDomain.
-            AddInLogger.Warn($"GetRenderer: permanently unavailable (TypeInitializationException): {ex.Message}");
-            if (ex.InnerException != null)
-                AddInLogger.Warn($"  Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
-            s_rendererLoadFailed = true;
-            return null;
-        }
-        catch (Exception ex)
-        {
-            AddInLogger.Warn($"GetRenderer: instance creation failed: {ex.GetType().Name}: {ex.Message}");
-            if (ex.InnerException != null)
-                AddInLogger.Warn($"  Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
-            return null;
-        }
-    }
 
     public static void ShowResult(string action, string result, string? correlationId = null, string? runtimeId = null, string? targetObject = null)
     {
@@ -260,7 +223,13 @@ public static class AssistantPanelFactory
                 return false;
             }
 
-            AddInLogger.Info("Creating WPF response window.");
+            // Log build identifier and environment
+            var assembly = typeof(AssistantPanelFactory).Assembly;
+            var buildId = assembly.GetName().Version?.ToString() ?? "unknown";
+            AddInLogger.Info($"=== WPF Response Window ===");
+            AddInLogger.Info($"Add-In build: {buildId}");
+            AddInLogger.Info($"Assembly: {assembly.FullName}");
+            AddInLogger.Info($"Assembly location: {assembly.Location}");
             AddInLogger.Info($"Window title: {title}");
             AddInLogger.Info($"Content length: {content.Length} chars");
             // Log first 200 chars to diagnose encoding and content shape
@@ -268,10 +237,6 @@ public static class AssistantPanelFactory
             AddInLogger.Info($"Content preview: [{preview}]");
             AddInLogger.Info($"Current thread: {Environment.CurrentManagedThreadId}, " +
                              $"apartment: {Thread.CurrentThread.GetApartmentState()}");
-            AddInLogger.Info($"_wpfAvailable state: {_wpfAvailable}");
-            AddInLogger.Info($"Markdown renderer available: {!s_rendererLoadFailed}");
-            AddInLogger.Info($"Assembly: {typeof(AssistantPanelFactory).Assembly.FullName}");
-            AddInLogger.Info($"Assembly location: {typeof(AssistantPanelFactory).Assembly.Location}");
             AddInLogger.Info($".NET Runtime: {System.Runtime.InteropServices.RuntimeEnvironment.GetSystemVersion()}");
 
             // Extract runtime info from content prefix (e.g. "[Runtime: claude]\n\n...")
@@ -376,69 +341,61 @@ public static class AssistantPanelFactory
                 MinHeight = 200
             };
 
-            // Render content into FlowDocument using the best available renderer.
-            // Strategy: Markdown → PlainText WPF (never MessageBox for renderer failure).
+            // Render content into FlowDocument.
+            // Strategy: SimpleMarkdownFlowDocumentRenderer → PlainText fallback.
             FlowDocument? document = null;
             string renderPath = "none";
+            string rendererClass = "none";
 
-            AddInLogger.Info($"Render decision: s_rendererLoadFailed={s_rendererLoadFailed}, " +
-                             $"markdownContent empty={string.IsNullOrWhiteSpace(markdownContent)}, " +
-                             $"MarkdownFlowDocumentRenderer.IsAvailable={MarkdownFlowDocumentRenderer.IsAvailable}");
+            AddInLogger.Info($"Content empty: {string.IsNullOrWhiteSpace(markdownContent)}");
 
-            if (!s_rendererLoadFailed && !string.IsNullOrWhiteSpace(markdownContent))
+            if (!string.IsNullOrWhiteSpace(markdownContent))
             {
-                // Try Markdown rendering
-                var renderer = GetRenderer();
-                if (renderer != null)
+                try
                 {
-                    try
+                    var renderer = new SimpleMarkdownFlowDocumentRenderer();
+                    rendererClass = nameof(SimpleMarkdownFlowDocumentRenderer);
+                    AddInLogger.Info($"Renderer class: {rendererClass}");
+
+                    document = renderer.Render(markdownContent);
+                    if (document != null)
                     {
-                        AddInLogger.Info("Attempting Markdown rendering...");
-                        document = renderer.Render(markdownContent);
-                        if (document != null)
-                        {
-                            renderPath = "markdown";
-                            AddInLogger.Info($"Markdown rendered successfully. Document has {document.Blocks.Count} blocks.");
-                        }
-                        else
-                        {
-                            AddInLogger.Warn("Markdown renderer returned null — falling back to plain text.");
-                        }
+                        renderPath = "markdown";
+                        AddInLogger.Info($"Markdown rendered successfully. Blocks: {document.Blocks.Count}");
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        AddInLogger.Warn($"Markdown rendering failed, falling back to plain text: {ex.GetType().Name}: {ex.Message}");
-                        if (ex.InnerException != null)
-                            AddInLogger.Warn($"  Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
+                        AddInLogger.Warn("Markdown renderer returned null — falling back to plain text.");
                     }
                 }
-                else
+                catch (Exception ex)
                 {
-                    AddInLogger.Warn("GetRenderer() returned null — renderer instance unavailable.");
+                    AddInLogger.Warn($"Markdown rendering failed, falling back to plain text: {ex.GetType().Name}: {ex.Message}");
+                    AddInLogger.Warn($"Full exception: {ex}");
                 }
-            }
-            else if (s_rendererLoadFailed)
-            {
-                AddInLogger.Info("Markdown renderer permanently unavailable (s_rendererLoadFailed=true) — using plain text rendering.");
             }
             else
             {
                 AddInLogger.Info("Markdown content is empty or whitespace — using empty placeholder.");
             }
 
-            // Fallback: plain text WPF (no Markdig dependency, cannot fail from TypeInitializationException)
+            // Fallback: plain text WPF
             if (document == null)
             {
                 document = string.IsNullOrWhiteSpace(markdownContent)
                     ? PlainTextFlowDocumentHelper.CreateEmpty()
                     : PlainTextFlowDocumentHelper.Create(markdownContent);
                 renderPath = string.IsNullOrWhiteSpace(markdownContent) ? "empty" : "plain-text";
-                AddInLogger.Info($"Using {renderPath} rendering for document.");
+                rendererClass = document == null ? "none" : nameof(PlainTextFlowDocumentHelper);
+                AddInLogger.Info($"Using {renderPath} rendering. Renderer class: {rendererClass}");
             }
 
             AddInLogger.Info($"Render path: {renderPath}");
+            AddInLogger.Info($"Viewer control type: {viewer.GetType().FullName}");
+            AddInLogger.Info($"FlowDocument blocks: {document?.Blocks.Count ?? 0}");
 
             viewer.Document = document;
+            AddInLogger.Info($"Document assigned to {viewer.GetType().Name}.Document successfully.");
 
             // ── Button bar: Copy + Close ──
             var buttonPanel = new System.Windows.Controls.StackPanel
@@ -461,7 +418,7 @@ public static class AssistantPanelFactory
                 {
                     // Get plain text from FlowDocument for clipboard
                     var textRange = new System.Windows.Documents.TextRange(
-                        document.ContentStart, document.ContentEnd);
+                        document!.ContentStart, document.ContentEnd);
                     System.Windows.Clipboard.SetText(textRange.Text);
                     copyButton.Content = "Copied!";
                     // Reset after 2 seconds

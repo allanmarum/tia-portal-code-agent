@@ -738,6 +738,8 @@ public static class SupervisorEngine
         psi.UseShellExecute = false;
         psi.RedirectStandardOutput = true;
         psi.RedirectStandardError = true;
+        psi.StandardOutputEncoding = System.Text.Encoding.UTF8;
+        psi.StandardErrorEncoding = System.Text.Encoding.UTF8;
         psi.CreateNoWindow = true;
 
         var proc = new Process { StartInfo = psi };
@@ -774,6 +776,8 @@ public static class SupervisorEngine
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8,
             CreateNoWindow = true
         };
         Directory.CreateDirectory(psi.WorkingDirectory);

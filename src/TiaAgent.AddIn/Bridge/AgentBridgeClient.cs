@@ -58,7 +58,9 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
             {
                 // Normalize charset name (e.g. "utf-8" → "utf-8")
                 var encoding = Encoding.GetEncoding(charset);
-                return encoding.GetString(bytes);
+                var result = encoding.GetString(bytes);
+                AddInLogger.Debug($"ReadResponseUtf8Async: charset='{charset}', {bytes.Length} bytes → {result.Length} chars");
+                return result;
             }
             catch
             {
@@ -67,7 +69,9 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
         }
 
         // Default: UTF-8 (the universal encoding for JSON APIs)
-        return Encoding.UTF8.GetString(bytes);
+        var utf8Result = Encoding.UTF8.GetString(bytes);
+        AddInLogger.Debug($"ReadResponseUtf8Async: charset=null (defaulting to UTF-8), {bytes.Length} bytes → {utf8Result.Length} chars");
+        return utf8Result;
     }
 
     private void ConfigureAuthentication(HttpClient client, AddInConfig config)
@@ -329,6 +333,72 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Detects and repairs UTF-8 mojibake: text where UTF-8 bytes were incorrectly
+    /// decoded as Windows-1252 (Latin-1), producing garbled characters like ΓöÇ instead of ─.
+    ///
+    /// Pattern: UTF-8 encodes U+2500..U+257F (box-drawing) as 3 bytes (E2 94/95 80..BF).
+    /// When those bytes are read as Windows-1252, they become: â (0xE2) + two chars in
+    /// 0x80..0xBF range. This method detects that pattern and re-encodes correctly.
+    ///
+    /// Used as defense-in-depth on the Add-In side. The primary fix is in ProcessRunner
+    /// (StandardOutputEncoding = UTF8), but this catches residual corruption from
+    /// any other encoding mis-handling in the pipeline.
+    /// </summary>
+    internal static string RepairMojibake(string text)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length < 3)
+            return text;
+
+        // Quick check: if no chars in the 0xC0-0xFF range, no mojibake is possible.
+        // UTF-8 3-byte sequences always contain bytes in 0x80-0xBF (continuation bytes),
+        // and the lead byte is always ≥ 0xC0. When read as Windows-1252, the lead byte
+        // maps to a char ≥ 0xC0, so this check catches all 3-byte mojibake.
+        bool hasHighChars = false;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] >= 0xC0)
+            {
+                hasHighChars = true;
+                break;
+            }
+        }
+        if (!hasHighChars)
+            return text;
+
+        // Try to detect and repair: encode as ISO-8859-1 bytes, then decode as UTF-8.
+        // If the result contains valid Unicode (no U+FFFD replacement chars) and differs
+        // from the original, it was mojibake.
+        // ISO-8859-1 (code page 28591) is a direct byte→char mapping for 0x00-0xFF,
+        // identical to Windows-1252 for this range, and available on all .NET platforms.
+        try
+        {
+            var latin1 = Encoding.GetEncoding(28591);
+
+            var bytes = latin1.GetBytes(text);
+            var repaired = Encoding.UTF8.GetString(bytes);
+
+            // Validate: the repaired text should not contain replacement chars (U+FFFD)
+            // and should differ from the original (meaning mojibake was detected and fixed)
+            if (repaired != text && !repaired.Contains('�'))
+            {
+                AddInLogger.Info($"RepairMojibake: repaired mojibake ({text.Length}→{repaired.Length} chars). " +
+                                 $"Preview: [{(repaired.Length > 100 ? repaired.Substring(0, 100) : repaired)}]");
+                return repaired;
+            }
+            else if (repaired.Contains('�'))
+            {
+                AddInLogger.Debug($"RepairMojibake: detected high chars but UTF-8 decode produced replacement chars — not mojibake.");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddInLogger.Warn($"RepairMojibake: failed: {ex.GetType().Name}: {ex.Message}");
+        }
+
+        return text;
+    }
+
     private static int ExtractJsonInt(string json, string key, int defaultValue = 0)
     {
         var search = "\"" + key + "\"";
@@ -422,7 +492,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
             Message = ExtractJsonString(json, "message") ?? "",
             RuntimeId = ExtractJsonString(json, "runtimeId"),
             RuntimeVersion = ExtractJsonString(json, "runtimeVersion"),
-            Response = ExtractJsonString(json, "response") ?? "",
+            Response = RepairMojibake(ExtractJsonString(json, "response") ?? ""),
             Error = error
         };
     }
