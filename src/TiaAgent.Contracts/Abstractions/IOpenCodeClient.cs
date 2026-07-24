@@ -14,38 +14,38 @@ public interface IOpenCodeClient
 
 public class CreateOpenCodeSessionRequest
 {
-    public required string CorrelationId { get; init; }
-    public required string TiaSessionId { get; init; }
-    public required string ProjectId { get; init; }
-    public string? DefaultAgent { get; init; }
+    public string CorrelationId { get; set; } = null!;
+    public string TiaSessionId { get; set; } = null!;
+    public string ProjectId { get; set; } = null!;
+    public string? DefaultAgent { get; set; }
 }
 
 public class StartOpenCodeTaskRequest
 {
-    public required string SessionId { get; init; }
-    public required string CorrelationId { get; init; }
-    public required string AgentId { get; init; }
-    public required string Message { get; init; }
-    public string? SelectionToken { get; init; }
+    public string SessionId { get; set; } = null!;
+    public string CorrelationId { get; set; } = null!;
+    public string AgentId { get; set; } = null!;
+    public string Message { get; set; } = null!;
+    public string? SelectionToken { get; set; }
 }
 
 public class OpenCodeSessionDto
 {
-    public required string SessionId { get; init; }
-    public required DateTimeOffset CreatedAt { get; init; }
+    public string SessionId { get; set; } = null!;
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 public class OpenCodeTaskDto
 {
-    public required string TaskId { get; init; }
-    public required string SessionId { get; init; }
-    public required DateTimeOffset CreatedAt { get; init; }
+    public string TaskId { get; set; } = null!;
+    public string SessionId { get; set; } = null!;
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 public class OpenCodeEventDto
 {
-    public required string EventType { get; init; }
-    public required string TaskId { get; init; }
-    public string? Message { get; init; }
-    public DateTimeOffset Timestamp { get; init; }
+    public string EventType { get; set; } = null!;
+    public string TaskId { get; set; } = null!;
+    public string? Message { get; set; }
+    public DateTimeOffset Timestamp { get; set; }
 }

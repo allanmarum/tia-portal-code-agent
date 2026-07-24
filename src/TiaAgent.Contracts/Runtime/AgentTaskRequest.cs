@@ -11,41 +11,41 @@ public sealed class AgentTaskRequest
     /// <summary>
     /// Unique task identifier assigned by the Bridge.
     /// </summary>
-    public string TaskId { get; init; } = null!;
+    public string TaskId { get; set; } = null!;
 
     /// <summary>
     /// Correlation ID for traceability across services.
     /// </summary>
-    public string CorrelationId { get; init; } = null!;
+    public string CorrelationId { get; set; } = null!;
 
     /// <summary>
     /// The action type (e.g. "explain", "review", "propose").
     /// </summary>
-    public string Action { get; init; } = null!;
+    public string Action { get; set; } = null!;
 
     /// <summary>
     /// The agent profile ID (e.g. "tia-explain", "tia-review", "tia-change").
     /// </summary>
-    public string AgentId { get; init; } = null!;
+    public string AgentId { get; set; } = null!;
 
     /// <summary>
     /// The fully-built prompt to send to the runtime.
     /// </summary>
-    public string Prompt { get; init; } = null!;
+    public string Prompt { get; set; } = null!;
 
     /// <summary>
     /// Optional runtime override from the task request.
     /// If set, takes precedence over the configured default.
     /// </summary>
-    public string? RuntimeOverride { get; init; }
+    public string? RuntimeOverride { get; set; }
 
     /// <summary>
     /// TIA Portal project context.
     /// </summary>
-    public ProjectSnapshot? Project { get; init; }
+    public ProjectSnapshot? Project { get; set; }
 
     /// <summary>
     /// TIA Portal selection context.
     /// </summary>
-    public SelectionSnapshot? Selection { get; init; }
+    public SelectionSnapshot? Selection { get; set; }
 }

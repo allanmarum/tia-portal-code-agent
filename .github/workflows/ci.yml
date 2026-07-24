@@ -153,9 +153,11 @@ jobs:
             # Verify required assemblies
             $hasAddIn = $parts | Where-Object { $_ -match 'TIAAGENT\.ADDIN' }
             $hasContracts = $parts | Where-Object { $_ -match 'TIAAGENT\.CONTRACTS' }
+            $hasMarkdig = $parts | Where-Object { $_ -match 'MARKDIG' }
             if (-not $hasAddIn) { throw "Package missing TiaAgent.AddIn.dll assembly" }
             if (-not $hasContracts) { throw "Package missing TiaAgent.Contracts.dll assembly" }
-            Write-Host "  [OK] Assemblies: TiaAgent.AddIn.dll, TiaAgent.Contracts.dll"
+            if (-not $hasMarkdig) { throw "Package missing Markdig.dll assembly (Markdown rendering)" }
+            Write-Host "  [OK] Assemblies: TiaAgent.AddIn.dll, TiaAgent.Contracts.dll, Markdig.dll"
 
             # Verify required permissions
             $hasUiPermission = $parts | Where-Object { $_ -match 'UIPermission' }
@@ -168,7 +170,9 @@ jobs:
             if (-not $hasEnvPermission) { throw "Package missing EnvironmentPermission (required for AddInLogger startup)" }
             if (-not $hasSecurityPermission) { throw "Package missing SecurityPermission (required for WPF Window constructor)" }
             if (-not $hasTiaPermission) { throw "Package missing TIA permission" }
-            Write-Host "  [OK] Permissions: UIPermission, FileIOPermission, EnvironmentPermission, SecurityPermission, TIA.ReadWrite"
+            $hasWebPermission = $parts | Where-Object { $_ -match 'WebPermission' }
+            if (-not $hasWebPermission) { throw "Package missing WebPermission (required for HttpClient)" }
+            Write-Host "  [OK] Permissions: UIPermission, FileIOPermission, EnvironmentPermission, SecurityPermission, WebPermission, TIA.ReadWrite"
 
             # Verify no overly broad permissions
             $hasUnrestricted = $parts | Where-Object { $_ -match 'UnrestrictedAccess' }

@@ -139,7 +139,82 @@ public static class AddInLogger
             Warn($"Failed to enumerate WPF assemblies: {asmEx.Message}");
         }
 
+        // Log critical third-party assembly availability (Markdig and dependencies)
+        LogThirdPartyAssemblyDiagnostics();
+
         Info("=== Startup diagnostics complete ===");
+    }
+
+    /// <summary>
+    /// Logs diagnostics for third-party assemblies that may be missing at runtime.
+    /// Checks both on-disk presence and in-memory load state.
+    /// </summary>
+    private static void LogThirdPartyAssemblyDiagnostics()
+    {
+        try
+        {
+            Info("--- Third-party assembly diagnostics ---");
+
+            // Check probing base directory
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            Info($"AppDomain.BaseDirectory: {baseDir ?? "(null)"}");
+
+            if (!string.IsNullOrEmpty(baseDir) && Directory.Exists(baseDir))
+            {
+                var dlls = Directory.GetFiles(baseDir, "*.dll");
+                Info($"DLLs in base directory: {dlls.Length}");
+                foreach (var dll in dlls)
+                {
+                    var fileName = Path.GetFileName(dll);
+                    Info($"  {fileName}");
+                }
+            }
+
+            // Check critical assemblies: on-disk presence + in-memory load state
+            var criticalAssemblies = new[]
+            {
+                "Markdig",
+                "System.Memory",
+                "System.Buffers",
+                "System.Numerics.Vectors",
+                "System.Runtime.CompilerServices.Unsafe"
+            };
+
+            var loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
+            foreach (var name in criticalAssemblies)
+            {
+                // Check if already loaded in the AppDomain
+                var loaded = Array.Find(loadedAssemblies, a =>
+                    a.GetName().Name == name);
+
+                if (loaded != null)
+                {
+                    Info($"Assembly '{name}' loaded: {loaded.FullName} @ {loaded.Location}");
+                }
+                else
+                {
+                    // Check if the DLL exists on disk in the base directory
+                    var dllPath = !string.IsNullOrEmpty(baseDir)
+                        ? Path.Combine(baseDir, name + ".dll")
+                        : null;
+
+                    if (dllPath != null && File.Exists(dllPath))
+                    {
+                        Warn($"Assembly '{name}' NOT loaded but DLL exists at {dllPath}");
+                    }
+                    else
+                    {
+                        Warn($"Assembly '{name}' NOT loaded and DLL NOT found at {dllPath ?? "(no base dir)"}");
+                    }
+                }
+            }
+
+            Info("--- Third-party assembly diagnostics complete ---");
+        }
+        catch (Exception ex)
+        {
+            Warn($"Third-party assembly diagnostics failed (best-effort): {ex.Message}");
+        }
     }
 
     /// <summary>

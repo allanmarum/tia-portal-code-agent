@@ -1,14 +1,23 @@
 #if SIEMENS
 using System;
+using System.IO;
+using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using TiaAgent.AddIn.Diagnostics;
 
 namespace TiaAgent.AddIn.Ui;
 
 /// <summary>
 /// Displays results to the user. Attempts WPF Window first; falls back to MessageBox.
+///
+/// Rendering strategy:
+/// 1. MarkdownFlowDocumentRenderer (Markdig + WPF FlowDocument) — rich formatting
+/// 2. PlainTextFlowDocumentHelper (pure WPF) — monospace plain text, no Markdig dependency
+/// 3. MessageBox (Win32) — last resort, always works
 ///
 /// WPF requires:
 /// 1. UIPermission (declared in Config.xml) — for Window creation in the sandbox.
@@ -23,9 +32,51 @@ public static class AssistantPanelFactory
 {
     private static bool? _wpfAvailable;
 
-    public static void ShowResult(string action, string result)
+    // Markdown renderer: lazy-loaded, may fail if Markdig dependencies are missing.
+    private static bool s_rendererLoadFailed;
+
+    // Matches "[Runtime: claude]\n\n" prefix added by ProjectTreeProvider
+    private static readonly Regex s_runtimePrefixRegex = new(
+        @"^\[Runtime:\s*(.+?)\]\s*\n\s*\n",
+        RegexOptions.Compiled);
+
+    private static MarkdownFlowDocumentRenderer? GetRenderer()
     {
-        ShowUi(result, "AI Code Agent - " + action, isWarning: false);
+        if (s_rendererLoadFailed)
+        {
+            AddInLogger.Debug("GetRenderer: s_rendererLoadFailed is true, returning null.");
+            return null;
+        }
+
+        // Always try to create a fresh instance — the renderer's EnsureInitialized()
+        // handles retry logic for transient failures (VerificationException in partial trust).
+        try
+        {
+            var renderer = new MarkdownFlowDocumentRenderer();
+            AddInLogger.Debug($"GetRenderer: instance created. IsAvailable={MarkdownFlowDocumentRenderer.IsAvailable}");
+            return renderer;
+        }
+        catch (TypeInitializationException ex)
+        {
+            // Static constructor failed — the type is permanently broken for this AppDomain.
+            AddInLogger.Warn($"GetRenderer: permanently unavailable (TypeInitializationException): {ex.Message}");
+            if (ex.InnerException != null)
+                AddInLogger.Warn($"  Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
+            s_rendererLoadFailed = true;
+            return null;
+        }
+        catch (Exception ex)
+        {
+            AddInLogger.Warn($"GetRenderer: instance creation failed: {ex.GetType().Name}: {ex.Message}");
+            if (ex.InnerException != null)
+                AddInLogger.Warn($"  Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
+            return null;
+        }
+    }
+
+    public static void ShowResult(string action, string result, string? correlationId = null, string? runtimeId = null, string? targetObject = null)
+    {
+        ShowUi(result, "AI Code Agent - " + action, isWarning: false, correlationId: correlationId, runtimeId: runtimeId, targetObject: targetObject);
     }
 
     public static void ShowError(string message)
@@ -43,30 +94,48 @@ public static class AssistantPanelFactory
         // Placeholder for future async UI
     }
 
-    private static void ShowUi(string content, string title, bool isWarning)
+    private static void ShowUi(string content, string title, bool isWarning, string? correlationId = null, string? runtimeId = null, string? targetObject = null)
     {
+        AddInLogger.Info($"ShowUi called: title='{title}', contentLength={content.Length}, " +
+                         $"thread={Environment.CurrentManagedThreadId}, " +
+                         $"apartment={Thread.CurrentThread.GetApartmentState()}, " +
+                         $"wpfAvailable={_wpfAvailable}");
+
         // Attempt 1: Use the WPF dispatcher if available (TIA Portal's UI thread).
-        if (TryRunOnDispatcher(() => ShowWpfOrFallback(content, title, isWarning)))
+        AddInLogger.Debug("Attempting dispatcher path...");
+        if (TryRunOnDispatcher(() => ShowWpfOrFallback(content, title, isWarning, correlationId, runtimeId, targetObject)))
+        {
+            AddInLogger.Info("Response displayed via dispatcher path.");
             return;
+        }
+        AddInLogger.Debug("Dispatcher path unavailable or failed.");
 
         // Attempt 2: Current thread is STA — try WPF directly.
         if (Thread.CurrentThread.GetApartmentState() == ApartmentState.STA)
         {
-            ShowWpfOrFallback(content, title, isWarning);
+            AddInLogger.Debug("Current thread is STA — trying WPF directly.");
+            ShowWpfOrFallback(content, title, isWarning, correlationId, runtimeId, targetObject);
+            AddInLogger.Info("Response displayed via direct STA path.");
             return;
         }
 
         // Attempt 3: MTA thread with no dispatcher — create a dedicated STA thread.
-        if (TryRunOnStaThread(() => ShowWpfOrFallback(content, title, isWarning)))
+        AddInLogger.Debug("Attempting dedicated STA thread path...");
+        if (TryRunOnStaThread(() => ShowWpfOrFallback(content, title, isWarning, correlationId, runtimeId, targetObject)))
+        {
+            AddInLogger.Info("Response displayed via dedicated STA thread path.");
             return;
+        }
+        AddInLogger.Debug("STA thread path failed.");
 
         // Last resort: MessageBox (always works, no WPF required).
+        AddInLogger.Warn("All WPF paths failed — falling back to MessageBox.");
         ShowMessageBoxFallback(content, title, isWarning);
     }
 
-    private static void ShowWpfOrFallback(string content, string title, bool isWarning)
+    private static void ShowWpfOrFallback(string content, string title, bool isWarning, string? correlationId = null, string? runtimeId = null, string? targetObject = null)
     {
-        if (TryShowWpfWindow(content, title, isWarning))
+        if (TryShowWpfWindow(content, title, isWarning, correlationId, runtimeId, targetObject))
             return;
 
         ShowMessageBoxFallback(content, title, isWarning);
@@ -87,9 +156,21 @@ public static class AssistantPanelFactory
     {
         try
         {
-            var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher == null)
+            var app = Application.Current;
+            if (app == null)
+            {
+                AddInLogger.Debug("TryRunOnDispatcher: Application.Current is null.");
                 return false;
+            }
+
+            var dispatcher = app.Dispatcher;
+            if (dispatcher == null)
+            {
+                AddInLogger.Debug("TryRunOnDispatcher: Dispatcher is null.");
+                return false;
+            }
+
+            AddInLogger.Debug($"TryRunOnDispatcher: Dispatcher available, CheckAccess={dispatcher.CheckAccess()}");
 
             if (dispatcher.CheckAccess())
             {
@@ -104,7 +185,9 @@ public static class AssistantPanelFactory
         }
         catch (Exception ex)
         {
-            AddInLogger.Warn($"Dispatcher invoke failed: {ex.Message}");
+            AddInLogger.Warn($"Dispatcher invoke failed: {ex.GetType().Name}: {ex.Message}");
+            if (ex.InnerException != null)
+                AddInLogger.Warn($"  Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
             return false;
         }
     }
@@ -120,15 +203,21 @@ public static class AssistantPanelFactory
 
         try
         {
+            AddInLogger.Debug($"Creating dedicated STA thread (current thread: {Environment.CurrentManagedThreadId})");
+
             var thread = new Thread(() =>
             {
                 try
                 {
+                    AddInLogger.Debug($"STA thread started (thread {Environment.CurrentManagedThreadId})");
                     action();
                 }
                 catch (Exception ex)
                 {
                     threadException = ex;
+                    AddInLogger.Warn($"STA thread action threw: {ex.GetType().Name}: {ex.Message}");
+                    if (ex.InnerException != null)
+                        AddInLogger.Warn($"  Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
                 }
             });
 
@@ -140,7 +229,9 @@ public static class AssistantPanelFactory
 
             if (threadException != null)
             {
-                AddInLogger.Warn($"STA thread action failed: {threadException.Message}");
+                AddInLogger.Warn($"STA thread action failed: {threadException.GetType().Name}: {threadException.Message}");
+                if (threadException.InnerException != null)
+                    AddInLogger.Warn($"  Inner: {threadException.InnerException.GetType().Name}: {threadException.InnerException.Message}");
                 return false;
             }
 
@@ -148,56 +239,248 @@ public static class AssistantPanelFactory
         }
         catch (Exception ex)
         {
-            AddInLogger.Warn($"Failed to create STA thread: {ex.Message}");
+            AddInLogger.Warn($"Failed to create STA thread: {ex.GetType().Name}: {ex.Message}");
             return false;
         }
     }
 
     /// <summary>
-    /// Attempts to create and show a programmatic WPF Window.
+    /// Attempts to create and show a programmatic WPF Window with
+    /// a FlowDocumentScrollViewer for Markdown rendering.
     /// Returns true if the window was shown and closed successfully.
     /// </summary>
-    private static bool TryShowWpfWindow(string content, string title, bool isWarning)
+    private static bool TryShowWpfWindow(string content, string title, bool isWarning,
+        string? correlationId = null, string? runtimeIdParam = null, string? targetObject = null)
     {
         try
         {
             if (_wpfAvailable == false)
+            {
+                AddInLogger.Debug("TryShowWpfWindow: _wpfAvailable is false, skipping.");
                 return false;
+            }
 
-            AddInLogger.Info("Creating diagnostic WPF window.");
+            AddInLogger.Info("Creating WPF response window.");
             AddInLogger.Info($"Window title: {title}");
             AddInLogger.Info($"Content length: {content.Length} chars");
+            // Log first 200 chars to diagnose encoding and content shape
+            var preview = content.Length > 200 ? content.Substring(0, 200) : content;
+            AddInLogger.Info($"Content preview: [{preview}]");
             AddInLogger.Info($"Current thread: {Environment.CurrentManagedThreadId}, " +
                              $"apartment: {Thread.CurrentThread.GetApartmentState()}");
+            AddInLogger.Info($"_wpfAvailable state: {_wpfAvailable}");
+            AddInLogger.Info($"Markdown renderer available: {!s_rendererLoadFailed}");
+            AddInLogger.Info($"Assembly: {typeof(AssistantPanelFactory).Assembly.FullName}");
+            AddInLogger.Info($"Assembly location: {typeof(AssistantPanelFactory).Assembly.Location}");
+            AddInLogger.Info($".NET Runtime: {System.Runtime.InteropServices.RuntimeEnvironment.GetSystemVersion()}");
 
-            // Create controls programmatically — no XAML dependency
+            // Extract runtime info from content prefix (e.g. "[Runtime: claude]\n\n...")
+            string? runtimeId = runtimeIdParam;
+            var markdownContent = content;
+            var runtimeMatch = s_runtimePrefixRegex.Match(content);
+            if (runtimeMatch.Success)
+            {
+                runtimeId = runtimeId ?? runtimeMatch.Groups[1].Value;
+                markdownContent = content.Substring(runtimeMatch.Length);
+            }
+
+            // ── Header ──
+            var headerGrid = new System.Windows.Controls.Grid();
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var headerStack = new StackPanel();
+            var headerTitle = new TextBlock
+            {
+                Text = "AI Code Agent",
+                Foreground = System.Windows.Media.Brushes.White,
+                FontSize = 16,
+                FontWeight = FontWeights.SemiBold
+            };
+            headerStack.Children.Add(headerTitle);
+
+            var headerSubtitle = new TextBlock
+            {
+                Text = title.Replace("AI Code Agent - ", "").Replace("AI Code Agent — ", ""),
+                Foreground = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF)),
+                FontSize = 12,
+                Margin = new Thickness(0, 2, 0, 0)
+            };
+            headerStack.Children.Add(headerSubtitle);
+            System.Windows.Controls.Grid.SetColumn(headerStack, 0);
+
+            if (!string.IsNullOrEmpty(runtimeId))
+            {
+                var runtimeLabel = new TextBlock
+                {
+                    Text = $"Runtime: {runtimeId}",
+                    Foreground = new System.Windows.Media.SolidColorBrush(
+                        System.Windows.Media.Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF)),
+                    FontSize = 11,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                System.Windows.Controls.Grid.SetColumn(runtimeLabel, 1);
+                headerGrid.Children.Add(runtimeLabel);
+            }
+
+            headerGrid.Children.Add(headerStack);
+
             var headerBorder = new Border
             {
                 Background = new System.Windows.Media.SolidColorBrush(
                     (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#0078D4")),
-                Padding = new Thickness(12, 10, 12, 10)
+                Padding = new Thickness(12, 10, 12, 10),
+                Child = headerGrid
             };
 
-            var headerText = new TextBlock
+            // ── Metadata bar: action, target, correlation ID ──
+            var metadataPanel = new StackPanel
             {
-                Text = title,
-                Foreground = System.Windows.Media.Brushes.White,
-                FontSize = 14,
-                FontWeight = FontWeights.SemiBold
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                Margin = new Thickness(12, 6, 12, 6)
             };
-            headerBorder.Child = headerText;
 
-            var contentBox = new TextBox
+            var actionText = title.Replace("AI Code Agent - ", "").Replace("AI Code Agent — ", "");
+            if (!string.IsNullOrEmpty(actionText))
             {
-                Text = content,
-                IsReadOnly = true,
-                TextWrapping = TextWrapping.Wrap,
+                metadataPanel.Children.Add(CreateMetadataChip($"Action: {actionText}"));
+            }
+            if (!string.IsNullOrEmpty(targetObject))
+            {
+                metadataPanel.Children.Add(CreateMetadataChip($"Target: {targetObject}"));
+            }
+            if (!string.IsNullOrEmpty(correlationId))
+            {
+                metadataPanel.Children.Add(CreateMetadataChip($"ID: {correlationId}"));
+            }
+
+            var metadataBorder = new Border
+            {
+                Background = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0xF8, 0xF8, 0xF8)),
+                BorderBrush = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0xE0, 0xE0, 0xE0)),
+                BorderThickness = new Thickness(0, 1, 0, 1),
+                Padding = new Thickness(4, 4, 4, 4),
+                Child = metadataPanel
+            };
+
+            // ── Content: FlowDocumentScrollViewer ──
+            var viewer = new FlowDocumentScrollViewer
+            {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 BorderThickness = new Thickness(0),
-                Background = System.Windows.Media.Brushes.Transparent,
-                FontFamily = new System.Windows.Media.FontFamily("Consolas"),
-                FontSize = 12,
-                Margin = new Thickness(12)
+                Background = System.Windows.Media.Brushes.White,
+                MinHeight = 200
+            };
+
+            // Render content into FlowDocument using the best available renderer.
+            // Strategy: Markdown → PlainText WPF (never MessageBox for renderer failure).
+            FlowDocument? document = null;
+            string renderPath = "none";
+
+            AddInLogger.Info($"Render decision: s_rendererLoadFailed={s_rendererLoadFailed}, " +
+                             $"markdownContent empty={string.IsNullOrWhiteSpace(markdownContent)}, " +
+                             $"MarkdownFlowDocumentRenderer.IsAvailable={MarkdownFlowDocumentRenderer.IsAvailable}");
+
+            if (!s_rendererLoadFailed && !string.IsNullOrWhiteSpace(markdownContent))
+            {
+                // Try Markdown rendering
+                var renderer = GetRenderer();
+                if (renderer != null)
+                {
+                    try
+                    {
+                        AddInLogger.Info("Attempting Markdown rendering...");
+                        document = renderer.Render(markdownContent);
+                        if (document != null)
+                        {
+                            renderPath = "markdown";
+                            AddInLogger.Info($"Markdown rendered successfully. Document has {document.Blocks.Count} blocks.");
+                        }
+                        else
+                        {
+                            AddInLogger.Warn("Markdown renderer returned null — falling back to plain text.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AddInLogger.Warn($"Markdown rendering failed, falling back to plain text: {ex.GetType().Name}: {ex.Message}");
+                        if (ex.InnerException != null)
+                            AddInLogger.Warn($"  Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
+                    }
+                }
+                else
+                {
+                    AddInLogger.Warn("GetRenderer() returned null — renderer instance unavailable.");
+                }
+            }
+            else if (s_rendererLoadFailed)
+            {
+                AddInLogger.Info("Markdown renderer permanently unavailable (s_rendererLoadFailed=true) — using plain text rendering.");
+            }
+            else
+            {
+                AddInLogger.Info("Markdown content is empty or whitespace — using empty placeholder.");
+            }
+
+            // Fallback: plain text WPF (no Markdig dependency, cannot fail from TypeInitializationException)
+            if (document == null)
+            {
+                document = string.IsNullOrWhiteSpace(markdownContent)
+                    ? PlainTextFlowDocumentHelper.CreateEmpty()
+                    : PlainTextFlowDocumentHelper.Create(markdownContent);
+                renderPath = string.IsNullOrWhiteSpace(markdownContent) ? "empty" : "plain-text";
+                AddInLogger.Info($"Using {renderPath} rendering for document.");
+            }
+
+            AddInLogger.Info($"Render path: {renderPath}");
+
+            viewer.Document = document;
+
+            // ── Button bar: Copy + Close ──
+            var buttonPanel = new System.Windows.Controls.StackPanel
+            {
+                Orientation = System.Windows.Controls.Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 0, 12, 12)
+            };
+
+            var copyButton = new Button
+            {
+                Content = "Copy response",
+                Width = 120,
+                Height = 32,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            copyButton.Click += (_, __) =>
+            {
+                try
+                {
+                    // Get plain text from FlowDocument for clipboard
+                    var textRange = new System.Windows.Documents.TextRange(
+                        document.ContentStart, document.ContentEnd);
+                    System.Windows.Clipboard.SetText(textRange.Text);
+                    copyButton.Content = "Copied!";
+                    // Reset after 2 seconds
+                    var timer = new System.Windows.Threading.DispatcherTimer
+                    {
+                        Interval = TimeSpan.FromSeconds(2)
+                    };
+                    timer.Tick += (_, __2) =>
+                    {
+                        copyButton.Content = "Copy response";
+                        timer.Stop();
+                    };
+                    timer.Start();
+                }
+                catch (Exception ex)
+                {
+                    AddInLogger.Warn($"Copy to clipboard failed: {ex.Message}");
+                    copyButton.Content = "Copy failed";
+                }
             };
 
             var closeButton = new Button
@@ -205,45 +488,85 @@ public static class AssistantPanelFactory
                 Content = "Close",
                 Width = 100,
                 Height = 32,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(0, 0, 12, 12),
                 IsCancel = true
             };
+            closeButton.Click += (_, __) =>
+            {
+                // Find and close the parent Window
+                var parent = Window.GetWindow(closeButton);
+                parent?.Close();
+            };
 
-            var panel = new StackPanel();
-            panel.Children.Add(headerBorder);
-            panel.Children.Add(contentBox);
-            panel.Children.Add(closeButton);
+            buttonPanel.Children.Add(copyButton);
+            buttonPanel.Children.Add(closeButton);
+
+            // ── Main layout: Grid with star-sized content row ──
+            var mainGrid = new System.Windows.Controls.Grid();
+            mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });  // header
+            mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });  // metadata
+            mainGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // content
+            mainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });  // buttons
+
+            System.Windows.Controls.Grid.SetRow(headerBorder, 0);
+            System.Windows.Controls.Grid.SetRow(metadataBorder, 1);
+            System.Windows.Controls.Grid.SetRow(viewer, 2);
+            System.Windows.Controls.Grid.SetRow(buttonPanel, 3);
+
+            mainGrid.Children.Add(headerBorder);
+            mainGrid.Children.Add(metadataBorder);
+            mainGrid.Children.Add(viewer);
+            mainGrid.Children.Add(buttonPanel);
 
             var window = new Window
             {
                 Title = title,
-                Width = 600,
-                Height = 400,
-                MinWidth = 400,
-                MinHeight = 300,
+                Width = 700,
+                Height = 600,
+                MinWidth = 500,
+                MinHeight = 400,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
                 ShowInTaskbar = true,
                 Topmost = true,
-                Content = panel
+                Content = mainGrid
             };
 
-            closeButton.Click += (_, __) => window.Close();
-
-            AddInLogger.Info("WPF window created. Calling ShowDialog().");
+            AddInLogger.Info("WPF response window created. Calling ShowDialog().");
 
             window.ShowDialog();
 
-            AddInLogger.Info("WPF window closed.");
+            AddInLogger.Info("WPF response window closed.");
 
             _wpfAvailable = true;
             return true;
         }
+        catch (TypeInitializationException ex)
+        {
+            // TypeInitializationException from a static field/constructor in this class
+            // or a class it references. Log details and disable WPF — this is a permanent
+            // failure for the current AppDomain (CLR caches static constructor failures).
+            AddInLogger.Error($"WPF type initialization failed (permanent for this session): {ex.GetType().FullName}: {ex.Message}", ex);
+            if (ex.InnerException != null)
+                AddInLogger.Warn($"  Inner: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}");
+
+            AddInLogger.Warn("Non-recoverable type initialization error — disabling WPF for this session.");
+            _wpfAvailable = false;
+            return false;
+        }
         catch (Exception ex)
         {
-            AddInLogger.Error("WPF window creation failed.", ex);
+            AddInLogger.Error($"WPF window creation failed: {ex.GetType().FullName}: {ex.Message}", ex);
 
-            // Only cache failure for permission errors.
+            // Log inner exception chain
+            var inner = ex.InnerException;
+            var depth = 0;
+            while (inner != null && depth < 5)
+            {
+                AddInLogger.Warn($"  Inner exception [{depth}]: {inner.GetType().FullName}: {inner.Message}");
+                inner = inner.InnerException;
+                depth++;
+            }
+
+            // Only cache failure for WPF/permission errors.
             // Threading errors (InvalidOperationException) should retry — the next
             // call may be on a different thread with STA state.
             if (ex is System.InvalidOperationException)
@@ -252,10 +575,37 @@ public static class AssistantPanelFactory
                 return false;
             }
 
-            // Permission or assembly errors — don't retry
-            _wpfAvailable = false;
+            // Renderer-specific or unknown errors — do NOT disable WPF.
+            // The WPF window itself may still work; only the renderer failed.
+            // The next call will use plain text fallback instead.
+            AddInLogger.Warn($"Non-threading error ({ex.GetType().Name}) — WPF will be retried with plain text fallback.");
             return false;
         }
+    }
+
+    /// <summary>
+    /// Creates a metadata chip (small labeled text block) for the header bar.
+    /// </summary>
+    private static Border CreateMetadataChip(string text)
+    {
+        var textBlock = new TextBlock
+        {
+            Text = text,
+            FontSize = 10,
+            Foreground = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0x60, 0x60, 0x60)),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        return new Border
+        {
+            Background = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0xE8, 0xE8, 0xE8)),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(6, 2, 6, 2),
+            Margin = new Thickness(0, 0, 6, 0),
+            Child = textBlock
+        };
     }
 }
 #endif

@@ -99,6 +99,8 @@ public sealed class RepositoryHealthAndSecurityTests
             "EnvironmentPermission is required for Environment.GetFolderPath() in AddInLogger.GetLogDir()");
         securityPermissions.Should().Contain("System.Security.Permissions.SecurityPermission.UnmanagedCode",
             "SecurityPermission.UnmanagedCode is required for WPF Window constructor (Window..ctor demands it)");
+        securityPermissions.Should().Contain("System.Net.WebPermission",
+            "WebPermission is required for HttpClient HTTP requests to the Bridge (AgentBridgeClient)");
 
         // Ensure no overly broad permissions are declared
         securityPermissions.Should().NotContain("System.Security.Permissions.SecurityPermission.SkipVerification",

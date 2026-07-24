@@ -40,6 +40,36 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
         _ownsHttpClient = false;
     }
 
+    /// <summary>
+    /// Reads HTTP response content as a string using explicit UTF-8 encoding.
+    /// This prevents encoding corruption when the server response lacks a
+    /// charset in the Content-Type header (which causes HttpClient to fall
+    /// back to Latin-1, producing garbled characters like rÃ©sultat).
+    /// </summary>
+    private static async Task<string> ReadResponseUtf8Async(HttpResponseMessage response)
+    {
+        var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+
+        // Check if server declared a charset; if so, use it.
+        var charset = response.Content.Headers.ContentType?.CharSet;
+        if (!string.IsNullOrEmpty(charset))
+        {
+            try
+            {
+                // Normalize charset name (e.g. "utf-8" → "utf-8")
+                var encoding = Encoding.GetEncoding(charset);
+                return encoding.GetString(bytes);
+            }
+            catch
+            {
+                // Unknown charset — fall through to UTF-8
+            }
+        }
+
+        // Default: UTF-8 (the universal encoding for JSON APIs)
+        return Encoding.UTF8.GetString(bytes);
+    }
+
     private void ConfigureAuthentication(HttpClient client, AddInConfig config)
     {
         if (!string.IsNullOrEmpty(config.AuthToken))
@@ -73,7 +103,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
         var response = await _httpClient.GetAsync("/health", cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var json = await ReadResponseUtf8Async(response).ConfigureAwait(false);
         return ParseHealthResponse(json);
     }
 
@@ -83,7 +113,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         var response = await _httpClient.PostAsync("/v1/tasks", content, cancellationToken).ConfigureAwait(false);
-        var responseJson = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var responseJson = await ReadResponseUtf8Async(response).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
             throw new BridgeTaskException($"Bridge returned {(int)response.StatusCode}: {responseJson}");
@@ -94,7 +124,7 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
     public async Task<BridgeTaskStatus> GetTaskAsync(string taskId, CancellationToken cancellationToken)
     {
         var response = await _httpClient.GetAsync($"/v1/tasks/{taskId}", cancellationToken).ConfigureAwait(false);
-        var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var json = await ReadResponseUtf8Async(response).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
             throw new BridgeTaskException($"Bridge returned {(int)response.StatusCode}: {json}");
@@ -183,12 +213,120 @@ public sealed class AgentBridgeClient : IAgentBridgeClient, IDisposable
         if (json[idx] == '"')
         {
             var start = idx + 1;
-            var end = json.IndexOf('"', start);
-            if (end < 0) return null;
-            return json.Substring(start, end - start);
+            // Find the closing quote, respecting escaped quotes (\")
+            var i = start;
+            while (i < json.Length)
+            {
+                if (json[i] == '\\')
+                {
+                    i += 2; // skip escaped character
+                    continue;
+                }
+                if (json[i] == '"')
+                    break;
+                i++;
+            }
+
+            if (i >= json.Length) return null;
+            var raw = json.Substring(start, i - start);
+            return UnescapeJsonString(raw);
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Unescapes a JSON string value. Reverses the escaping applied by
+    /// BridgeController.EscapeJson() during serialization.
+    /// Uses character-by-character processing to avoid double-processing
+    /// issues with sequential Replace calls (e.g. "\\n" → wrong result).
+    /// Handles \uXXXX unicode escape sequences for accented characters.
+    /// </summary>
+    private static string UnescapeJsonString(string raw)
+    {
+        if (string.IsNullOrEmpty(raw))
+            return raw;
+
+        var sb = new System.Text.StringBuilder(raw.Length);
+        for (int i = 0; i < raw.Length; i++)
+        {
+            if (raw[i] == '\\' && i + 1 < raw.Length)
+            {
+                switch (raw[i + 1])
+                {
+                    case 'n':
+                        sb.Append('\n');
+                        i++;
+                        break;
+                    case 'r':
+                        sb.Append('\r');
+                        i++;
+                        break;
+                    case 't':
+                        sb.Append('\t');
+                        i++;
+                        break;
+                    case '"':
+                        sb.Append('"');
+                        i++;
+                        break;
+                    case '\\':
+                        sb.Append('\\');
+                        i++;
+                        break;
+                    case 'u':
+                        // \uXXXX — parse 4 hex digits as a Unicode code point.
+                        // Handles supplementary plane (surrogate pairs) for full Unicode support.
+                        if (i + 5 < raw.Length)
+                        {
+                            var hex = raw.Substring(i + 2, 4);
+                            if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber,
+                                    System.Globalization.CultureInfo.InvariantCulture, out var codePoint))
+                            {
+                                // Check for surrogate pair: high surrogate (0xD800-0xDBFF)
+                                if (codePoint >= 0xD800 && codePoint <= 0xDBFF &&
+                                    i + 11 < raw.Length && raw[i + 6] == '\\' && raw[i + 7] == 'u')
+                                {
+                                    var lowHex = raw.Substring(i + 8, 4);
+                                    if (int.TryParse(lowHex, System.Globalization.NumberStyles.HexNumber,
+                                            System.Globalization.CultureInfo.InvariantCulture, out var lowCode))
+                                    {
+                                        if (lowCode >= 0xDC00 && lowCode <= 0xDFFF)
+                                        {
+                                            // Valid surrogate pair — combine into a single character
+                                            var fullCode = 0x10000 + (codePoint - 0xD800) * 0x400 + (lowCode - 0xDC00);
+                                            sb.Append(char.ConvertFromUtf32(fullCode));
+                                            i += 11; // skip \uXXXX\uXXXX
+                                            break;
+                                        }
+                                    }
+                                }
+                                // Basic BMP character
+                                sb.Append((char)codePoint);
+                                i += 5; // skip \uXXXX
+                            }
+                            else
+                            {
+                                // Invalid hex — keep literal
+                                sb.Append(raw[i]);
+                            }
+                        }
+                        else
+                        {
+                            sb.Append(raw[i]);
+                        }
+                        break;
+                    default:
+                        sb.Append(raw[i]);
+                        break;
+                }
+            }
+            else
+            {
+                sb.Append(raw[i]);
+            }
+        }
+        return sb.ToString();
     }
 
     private static int ExtractJsonInt(string json, string key, int defaultValue = 0)

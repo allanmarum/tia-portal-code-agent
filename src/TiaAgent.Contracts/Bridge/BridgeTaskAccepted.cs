@@ -2,7 +2,7 @@ namespace TiaAgent.Contracts.Bridge;
 
 public sealed class BridgeTaskAccepted
 {
-    public string TaskId { get; init; } = null!;
-    public string Status { get; init; } = null!;
-    public string CorrelationId { get; init; } = null!;
+    public string TaskId { get; set; } = null!;
+    public string Status { get; set; } = null!;
+    public string CorrelationId { get; set; } = null!;
 }
