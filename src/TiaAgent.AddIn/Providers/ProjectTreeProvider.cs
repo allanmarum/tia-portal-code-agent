@@ -8,6 +8,7 @@ using Siemens.Engineering.AddIn;
 using Siemens.Engineering.AddIn.Menu;
 using TiaAgent.AddIn.Bridge;
 using TiaAgent.AddIn.Diagnostics;
+using TiaAgent.AddIn.Ui;
 using TiaAgent.Contracts.Bridge;
 
 namespace TiaAgent.AddIn.Providers;
@@ -19,6 +20,27 @@ public sealed class ProjectTreeProvider : ProjectTreeAddInProvider
     public ProjectTreeProvider(TiaPortal tiaPortal)
     {
         _tiaPortal = tiaPortal;
+
+        // Logger startup must never prevent Add-In loading.
+        // AddInLogger.Startup() is itself best-effort, but this is an additional
+        // safety boundary in case of TypeInitializationException or unexpected failures.
+        try
+        {
+            AddInLogger.Startup();
+        }
+        catch
+        {
+            // Intentionally empty: logger failure must not break the Add-In.
+        }
+
+        try
+        {
+            AddInLogger.Info("ProjectTreeProvider initialized.");
+        }
+        catch
+        {
+            // Same principle: logging is best-effort.
+        }
     }
 
     protected override System.Collections.Generic.IEnumerable<ContextMenuAddIn> GetContextMenuAddIns()
@@ -56,20 +78,26 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
 
     private void HandleAction(string action, MenuSelectionProvider<IEngineeringObject> selection)
     {
+        AddInLogger.Info($"Menu action triggered: {action}");
+        AddInLogger.Info($"Current thread: {Environment.CurrentManagedThreadId}, " +
+                         $"apartment: {Thread.CurrentThread.GetApartmentState()}");
+
         try
         {
             var objects = selection.GetSelection();
             var enumerator = objects.GetEnumerator();
             if (!enumerator.MoveNext())
             {
-                MessageBox.Show("No object selected.", "AI Code Agent", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AddInLogger.Warn("No object selected.");
+                AssistantPanelFactory.ShowWarning("No object selected.");
                 return;
             }
 
             var selectedObj = enumerator.Current as IEngineeringObject;
             if (selectedObj == null)
             {
-                MessageBox.Show("Selected object is not a TIA engineering object.", "AI Code Agent", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AddInLogger.Warn("Selected object is not a TIA engineering object.");
+                AssistantPanelFactory.ShowWarning("Selected object is not a TIA engineering object.");
                 return;
             }
 
@@ -78,17 +106,23 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
             var typeName = selectedObj.GetType().Name;
             var correlationId = $"tia-{Guid.NewGuid():N}";
 
+            AddInLogger.Info($"Selection captured: {selectionInfo} (type: {typeName}, correlation: {correlationId})");
+
             // Fire-and-forget: Bridge call on background thread, UI on completion
             Task.Run(() => ExecuteViaBridgeAsync(action, selectionInfo, typeName, correlationId));
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error: {ex.Message}", "AI Code Agent", MessageBoxButton.OK, MessageBoxImage.Error);
+            AddInLogger.Error($"Error handling menu action '{action}'", ex);
+            AssistantPanelFactory.ShowError($"Error: {ex.Message}");
         }
     }
 
     private async Task ExecuteViaBridgeAsync(string action, string selectionInfo, string typeName, string correlationId)
     {
+        AddInLogger.Info($"Bridge execution started for '{action}' on thread " +
+                         $"{Environment.CurrentManagedThreadId}");
+
         try
         {
             var agentId = action switch
@@ -137,7 +171,11 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
                 UserMessage = $"The user selected object \"{selectionInfo}\" of type \"{typeName}\" in TIA Portal. Please {actionDescription}."
             };
 
+            AddInLogger.Info($"Starting Bridge task: agentId={agentId}, action={action}");
+
             var accepted = await AddInServices.BridgeClient.StartTaskAsync(request, CancellationToken.None).ConfigureAwait(false);
+
+            AddInLogger.Info($"Bridge task accepted: taskId={accepted.TaskId}");
 
             // Poll for completion
             var config = AddInServices.Config;
@@ -148,7 +186,8 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
             {
                 if (DateTime.UtcNow - startTime > timeout)
                 {
-                    ShowOnUi("Task timed out waiting for response.", "Warning");
+                    AddInLogger.Warn($"Task timed out after {config.TaskTimeoutSeconds}s");
+                    AssistantPanelFactory.ShowWarning("Task timed out waiting for response.");
                     return;
                 }
 
@@ -163,20 +202,23 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
                     {
                         response = $"[Runtime: {status.RuntimeId}]\n\n{response}";
                     }
-                    ShowOnUi(response, $"AI Code Agent - {action}");
+                    AddInLogger.Info($"Task completed. Response length: {response.Length} chars");
+                    AssistantPanelFactory.ShowResult(action, response);
                     return;
                 }
 
                 if (status.Status == BridgeTaskStatusValues.Failed)
                 {
                     var errorMsg = status.Error?.Message ?? status.Message ?? "Unknown error";
-                    ShowOnUi(errorMsg, "AI Code Agent - Error");
+                    AddInLogger.Error($"Task failed: {errorMsg}");
+                    AssistantPanelFactory.ShowError(errorMsg);
                     return;
                 }
 
                 if (status.Status == BridgeTaskStatusValues.Cancelled)
                 {
-                    ShowOnUi("Task was cancelled.", "AI Code Agent");
+                    AddInLogger.Info("Task was cancelled.");
+                    AssistantPanelFactory.ShowWarning("Task was cancelled.");
                     return;
                 }
             }
@@ -184,14 +226,8 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
         catch (Exception ex)
         {
             AddInLogger.Error($"Bridge execution failed for '{action}'", ex);
-            ShowOnUi("Failed to communicate with AI assistant: " + ex.Message, "AI Code Agent - Error");
+            AssistantPanelFactory.ShowError("Failed to communicate with AI assistant: " + ex.Message);
         }
     }
-
-    private static void ShowOnUi(string message, string title)
-    {
-        MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
-    }
 }
-
 #endif

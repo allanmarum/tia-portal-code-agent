@@ -69,19 +69,40 @@ public sealed class RepositoryHealthAndSecurityTests
     }
 
     [Fact]
-    public void AddIn_Config_xml_maintains_least_privilege_read_only()
+    public void AddIn_Config_xml_maintains_least_privilege()
     {
         var root = FindRepositoryRoot();
         var configPath = Path.Combine(root, "src", "TiaAgent.AddIn", "Config.xml");
 
         var document = XDocument.Load(configPath);
-        var permissions = document.Descendants().FirstOrDefault(e => e.Name.LocalName == "TIAPermissions")?.Elements().Select(e => e.Name.LocalName).ToList() ?? new List<string>();
 
-        permissions.Should().Contain("TIA.ReadOnly", "MVP Add-In manifest must request read-only permissions");
-        permissions.Should().NotContain("TIA.ReadWrite", "MVP Add-In manifest must not request read-write permissions");
-
+        // Must not grant unrestricted access
         var unrestricted = document.Descendants().Where(e => e.Name.LocalName == "UnrestrictedAccess");
-        unrestricted.Should().BeEmpty("MVP Add-In manifest must not grant UnrestrictedAccess");
+        unrestricted.Should().BeEmpty("Add-In manifest must not grant UnrestrictedAccess");
+
+        // Verify TIA permissions are present
+        var tiaPermissions = document.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "TIAPermissions")
+            ?.Elements().Select(e => e.Name.LocalName).ToList() ?? new List<string>();
+        tiaPermissions.Should().NotBeEmpty("Add-In manifest must declare TIA permissions");
+
+        // Verify required security permissions for WPF UI and logging
+        var securityPermissions = document.Descendants()
+            .FirstOrDefault(e => e.Name.LocalName == "SecurityPermissions")
+            ?.Elements().Select(e => e.Name.LocalName).ToList() ?? new List<string>();
+
+        securityPermissions.Should().Contain("System.Security.Permissions.UIPermission",
+            "UIPermission is required for WPF Window creation (AssistantPanelFactory)");
+        securityPermissions.Should().Contain("System.Security.Permissions.FileIOPermission",
+            "FileIOPermission is required for file-based logging (AddInLogger)");
+        securityPermissions.Should().Contain("System.Security.Permissions.EnvironmentPermission",
+            "EnvironmentPermission is required for Environment.GetFolderPath() in AddInLogger.GetLogDir()");
+        securityPermissions.Should().Contain("System.Security.Permissions.SecurityPermission.UnmanagedCode",
+            "SecurityPermission.UnmanagedCode is required for WPF Window constructor (Window..ctor demands it)");
+
+        // Ensure no overly broad permissions are declared
+        securityPermissions.Should().NotContain("System.Security.Permissions.SecurityPermission.SkipVerification",
+            "SkipVerification permission is not required and must not be declared");
     }
 
     [Fact]

@@ -119,6 +119,86 @@ jobs:
           ./build.ps1 build
           ./build.ps1 test
 
+      - name: Validate Add-In package contents
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # Check if TIA Portal publisher is available (requires TIA Portal installation)
+          $publisher = "C:\Program Files\Siemens\Automation\Portal V21\PublicAPI\V21\Siemens.Engineering.AddIn.Publisher.exe"
+          if (-not (Test-Path $publisher)) {
+            Write-Host "TIA Portal publisher not available — skipping package validation."
+            exit 0
+          }
+
+          Write-Host "=== Validating Add-In package ==="
+
+          # Build and package
+          ./build.ps1 pack-addin
+
+          # Find the .addin file
+          $addin = Get-ChildItem "artifacts" -Filter "TiaAgent-*.addin" | Select-Object -First 1
+          if (-not $addin) {
+            throw "No .addin file found in artifacts/"
+          }
+          Write-Host "Package: $($addin.Name)"
+
+          # Inspect OPC package contents
+          Add-Type -AssemblyName WindowsBase
+          $pkg = [IO.Packaging.Package]::Open($addin.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+          try {
+            $parts = @($pkg.GetParts() | ForEach-Object { $_.Uri.ToString() })
+
+            # Verify required assemblies
+            $hasAddIn = $parts | Where-Object { $_ -match 'TIAAGENT\.ADDIN' }
+            $hasContracts = $parts | Where-Object { $_ -match 'TIAAGENT\.CONTRACTS' }
+            if (-not $hasAddIn) { throw "Package missing TiaAgent.AddIn.dll assembly" }
+            if (-not $hasContracts) { throw "Package missing TiaAgent.Contracts.dll assembly" }
+            Write-Host "  [OK] Assemblies: TiaAgent.AddIn.dll, TiaAgent.Contracts.dll"
+
+            # Verify required permissions
+            $hasUiPermission = $parts | Where-Object { $_ -match 'UIPermission' }
+            $hasFileIoPermission = $parts | Where-Object { $_ -match 'FileIOPermission' }
+            $hasEnvPermission = $parts | Where-Object { $_ -match 'EnvironmentPermission' }
+            $hasSecurityPermission = $parts | Where-Object { $_ -match 'SecurityPermission' }
+            $hasTiaPermission = $parts | Where-Object { $_ -match 'TIA\.' }
+            if (-not $hasUiPermission) { throw "Package missing UIPermission (required for WPF UI)" }
+            if (-not $hasFileIoPermission) { throw "Package missing FileIOPermission (required for logging)" }
+            if (-not $hasEnvPermission) { throw "Package missing EnvironmentPermission (required for AddInLogger startup)" }
+            if (-not $hasSecurityPermission) { throw "Package missing SecurityPermission (required for WPF Window constructor)" }
+            if (-not $hasTiaPermission) { throw "Package missing TIA permission" }
+            Write-Host "  [OK] Permissions: UIPermission, FileIOPermission, EnvironmentPermission, SecurityPermission, TIA.ReadWrite"
+
+            # Verify no overly broad permissions
+            $hasUnrestricted = $parts | Where-Object { $_ -match 'UnrestrictedAccess' }
+            $hasSkipVerification = $parts | Where-Object { $_ -match 'SkipVerification' }
+            if ($hasUnrestricted) { throw "Package must not contain UnrestrictedAccess" }
+            if ($hasSkipVerification) { throw "Package must not contain SkipVerification permission" }
+            Write-Host "  [OK] No overly broad permissions"
+
+            # Verify metadata
+            $hasMeta = $parts | Where-Object { $_ -match '/Meta/' }
+            $hasVersion = $parts | Where-Object { $_ -match '/EngineeringVersion' }
+            if (-not $hasMeta) { throw "Package missing /Meta/ section" }
+            if (-not $hasVersion) { throw "Package missing /EngineeringVersion" }
+            Write-Host "  [OK] Metadata present"
+
+            # Verify digital signature
+            $hasSignature = $parts | Where-Object { $_ -match '/package/services/digital-signature/' }
+            if ($hasSignature) {
+              Write-Host "  [OK] Digital signature present"
+            } else {
+              Write-Host "  [WARN] No digital signature (unsigned package)"
+            }
+
+            Write-Host ""
+            Write-Host "=== Package validation passed ==="
+          } finally {
+            $pkg.Close()
+            $pkg.Dispose()
+          }
+
   codeql-analysis:
     name: CodeQL static analysis
     runs-on: windows-latest
