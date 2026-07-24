@@ -5,13 +5,20 @@ namespace TiaAgent.AddIn.Bridge;
 
 /// <summary>
 /// Configuration for the Bridge HTTP client.
-/// Discovers the Bridge port from the runtime manifest written by the supervisor.
+/// Discovers the Bridge port and auth token from the runtime manifest
+/// and token file written by the supervisor.
 /// </summary>
 public sealed class AddInConfig
 {
-    private static readonly string RuntimeManifestPath = Path.Combine(
+    private static readonly string RuntimeDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "TiaAgent", "runtime", "runtime.json");
+        "TiaAgent", "runtime");
+
+    private static readonly string RuntimeManifestPath = Path.Combine(RuntimeDir, "runtime.json");
+
+    // Token file is one directory up from the runtime dir, at %LOCALAPPDATA%\TiaAgent\bridge.token
+    private static readonly string TokenFilePath = Path.Combine(
+        Path.GetDirectoryName(RuntimeDir)!, "bridge.token");
 
     public string BridgeBaseUrl { get; set; } = "http://127.0.0.1:43119";
     public int RequestTimeoutSeconds { get; set; } = 15;
@@ -37,6 +44,23 @@ public sealed class AddInConfig
         catch
         {
             // File I/O may be restricted in sandbox — use default port
+        }
+
+        // Try to discover auth token from token file
+        try
+        {
+            if (File.Exists(TokenFilePath))
+            {
+                var token = File.ReadAllText(TokenFilePath).Trim();
+                if (!string.IsNullOrEmpty(token))
+                {
+                    AuthToken = token;
+                }
+            }
+        }
+        catch
+        {
+            // File I/O may be restricted in sandbox — requests will fail with 401
         }
     }
 

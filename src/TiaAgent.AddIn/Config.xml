@@ -21,6 +21,9 @@
     <AssemblyInfo>
       <Assembly>TiaAgent.Contracts.dll</Assembly>
     </AssemblyInfo>
+    <AssemblyInfo>
+      <Assembly>Markdig.dll</Assembly>
+    </AssemblyInfo>
   </AdditionalAssemblies>
 
   <RequiredPermissions>
@@ -55,6 +58,13 @@
            not go through WPF's CAS demand chain.
            Code path: new Window() in AssistantPanelFactory.TryShowWpfWindow() -->
       <System.Security.Permissions.SecurityPermission.UnmanagedCode />
+
+      <!-- Required for HttpClient HTTP requests to the Bridge process.
+           Without this, HttpClient.GetAsync/PostAsync throw SecurityException
+           with "Request for the permission of type System.Net.WebPermission".
+           Code path: AgentBridgeClient.StartTaskAsync(), GetTaskAsync(),
+           CheckHealthAsync() — all HTTP calls to the local Bridge. -->
+      <System.Net.WebPermission />
     </SecurityPermissions>
   </RequiredPermissions>
 </PackageConfiguration>

@@ -8,15 +8,15 @@ namespace TiaAgent.Contracts.Errors;
 /// </summary>
 public class TiaError
 {
-    public required TiaErrorCode Code { get; init; }
-    public required string Message { get; init; }
-    public bool Retryable { get; init; }
-    public string? CorrelationId { get; init; }
-    public Dictionary<string, object>? Details { get; init; }
-    public string? Remediation { get; init; }
+    public TiaErrorCode Code { get; set; }
+    public string Message { get; set; } = null!;
+    public bool Retryable { get; set; }
+    public string? CorrelationId { get; set; }
+    public Dictionary<string, object>? Details { get; set; }
+    public string? Remediation { get; set; }
 
     [IgnoreDataMember]
-    public Exception? InternalException { get; init; }
+    public Exception? InternalException { get; set; }
 
     public static TiaError NotFound(string message, string? correlationId = null) => new()
     {

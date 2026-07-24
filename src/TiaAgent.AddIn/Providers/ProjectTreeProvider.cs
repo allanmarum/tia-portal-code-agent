@@ -203,7 +203,10 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
                         response = $"[Runtime: {status.RuntimeId}]\n\n{response}";
                     }
                     AddInLogger.Info($"Task completed. Response length: {response.Length} chars");
-                    AssistantPanelFactory.ShowResult(action, response);
+                    AssistantPanelFactory.ShowResult(action, response,
+                        correlationId: correlationId,
+                        runtimeId: status.RuntimeId,
+                        targetObject: selectionInfo);
                     return;
                 }
 
@@ -225,9 +228,75 @@ public sealed class TiaAgentContextMenu : ContextMenuAddIn
         }
         catch (Exception ex)
         {
-            AddInLogger.Error($"Bridge execution failed for '{action}'", ex);
-            AssistantPanelFactory.ShowError("Failed to communicate with AI assistant: " + ex.Message);
+            // Log full diagnostic details: exception type, message, stack trace,
+            // inner exceptions, assembly info, and correlation ID.
+            var diagnostics = FormatExceptionDiagnostics(ex, action, correlationId);
+            AddInLogger.Error(diagnostics, null);
+
+            // Show a clear, user-friendly message while preserving the technical
+            // cause in logs for future diagnosis.
+            var userMessage = FormatUserErrorMessage(ex);
+            AssistantPanelFactory.ShowError(userMessage);
         }
+    }
+
+    /// <summary>
+    /// Formats comprehensive diagnostic information for an exception.
+    /// Includes exception type, message, stack trace, inner exceptions,
+    /// assembly info, and correlation ID for post-mortem analysis.
+    /// </summary>
+    private static string FormatExceptionDiagnostics(Exception ex, string action, string correlationId)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Bridge execution failed for '{action}' (correlation: {correlationId})");
+        sb.AppendLine($"Exception type: {ex.GetType().FullName}");
+        sb.AppendLine($"Message: {ex.Message}");
+        sb.AppendLine($"Thread: {Environment.CurrentManagedThreadId}, apartment: {Thread.CurrentThread.GetApartmentState()}");
+        sb.AppendLine($".NET Runtime: {System.Runtime.InteropServices.RuntimeEnvironment.GetSystemVersion()}");
+        sb.AppendLine($"CLR Version: {Environment.Version}");
+
+        // Log all inner exceptions recursively
+        var inner = ex.InnerException;
+        var depth = 0;
+        while (inner != null && depth < 5)
+        {
+            sb.AppendLine($"Inner exception [{depth}]: {inner.GetType().FullName}: {inner.Message}");
+            inner = inner.InnerException;
+            depth++;
+        }
+
+        // Log the full stack trace
+        if (!string.IsNullOrEmpty(ex.StackTrace))
+        {
+            sb.AppendLine($"Stack trace:\n{ex.StackTrace}");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Formats a user-friendly error message. Preserves the technical cause
+    /// for known exception types while showing a clear message for unknowns.
+    /// </summary>
+    private static string FormatUserErrorMessage(Exception ex)
+    {
+        // For VerificationException (CAS/sandbox issues), provide actionable guidance
+        if (ex is System.Security.VerificationException)
+        {
+            return "The Add-In encountered a security sandbox restriction. "
+                 + "This usually means a dependency requires permissions not available "
+                 + "in TIA Portal's partial-trust environment. Check the Add-In logs for details.";
+        }
+
+        // For SecurityException, show the permission type that failed
+        if (ex is System.Security.SecurityException secEx)
+        {
+            return $"A security permission was denied: {secEx.Message}. "
+                 + "The Add-In may need additional permissions in Config.xml.";
+        }
+
+        // For HTTP/bridge errors, show the message directly
+        return "Failed to communicate with AI assistant: " + ex.Message;
     }
 }
 #endif
