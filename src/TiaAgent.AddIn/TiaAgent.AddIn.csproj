@@ -6,18 +6,12 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <UseWPF>true</UseWPF>
     <!-- Copy ALL transitive NuGet dependencies to build output so the Siemens Publisher
-         can include them in the .addin package. Markdig 0.33.0 has NO transitive
-         dependencies (unlike 0.37.0 which depends on System.Memory and causes
-         VerificationException in TIA Portal's partial-trust sandbox). -->
+         can include them in the .addin package. -->
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\TiaAgent.Contracts\TiaAgent.Contracts.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Markdig" />
   </ItemGroup>
 
   <!-- Define SIEMENS only when TIA Portal assemblies are available -->
@@ -55,6 +49,13 @@
     <EmbeddedResource Include="Resources\icons8-ai-48.png">
       <LogicalName>TiaAgent.AddIn.Resources.icons8-ai-48.png</LogicalName>
     </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- Expose internals to test project -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>TiaAgent.AddIn.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <Import Project="PackageAddIn.targets" />

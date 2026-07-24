@@ -8,12 +8,6 @@
         "resolved": "8.10.0",
         "contentHash": "yGvv+xp0gHFgGwhQcGoDdKIrhLhPi3zYYWWLLHPMctr+G6PWD7QH8L4wqoa5WRZquPbfSV/cP1MraI7ppAHrWw=="
       },
-      "Markdig": {
-        "type": "Direct",
-        "requested": "[0.37.0, )",
-        "resolved": "0.37.0",
-        "contentHash": "biiu4MTPFjW55qw6v5Aphtj0MjDLJ14x8ndZwkJUHIeqvaSGKeqhLY7S7Vu/S3k7/c9KwhhnaCDP9hdFNUhcNA=="
-      },
       "Microsoft.NET.Test.Sdk": {
         "type": "Direct",
         "requested": "[18.8.1, )",
@@ -118,7 +112,6 @@
       "tiaagent.addin": {
         "type": "Project",
         "dependencies": {
-          "Markdig": "[0.37.0, )",
           "TiaAgent.Contracts": "[0.0.0-dev, )"
         }
       },

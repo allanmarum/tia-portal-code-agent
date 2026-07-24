@@ -59,6 +59,8 @@ public sealed class ProcessRunner : IDisposable
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 RedirectStandardInput = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
                 CreateNoWindow = true,
             };
 
@@ -72,6 +74,7 @@ public sealed class ProcessRunner : IDisposable
             }
 
             _logger.Info($"ProcessRunner: starting '{executable}' with args: {Truncate(arguments, 500)}");
+            _logger.Info($"ProcessRunner: stdout encoding = {startInfo.StandardOutputEncoding.WebName}, stderr encoding = {startInfo.StandardErrorEncoding.WebName}");
 
             process = new Process { StartInfo = startInfo };
             process.Start();

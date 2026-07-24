@@ -139,7 +139,7 @@ public static class AddInLogger
             Warn($"Failed to enumerate WPF assemblies: {asmEx.Message}");
         }
 
-        // Log critical third-party assembly availability (Markdig and dependencies)
+        // Log critical assembly availability
         LogThirdPartyAssemblyDiagnostics();
 
         Info("=== Startup diagnostics complete ===");
@@ -173,11 +173,8 @@ public static class AddInLogger
             // Check critical assemblies: on-disk presence + in-memory load state
             var criticalAssemblies = new[]
             {
-                "Markdig",
-                "System.Memory",
-                "System.Buffers",
-                "System.Numerics.Vectors",
-                "System.Runtime.CompilerServices.Unsafe"
+                "TiaAgent.AddIn",
+                "TiaAgent.Contracts"
             };
 
             var loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
