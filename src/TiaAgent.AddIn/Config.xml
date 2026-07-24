@@ -25,7 +25,36 @@
 
   <RequiredPermissions>
     <TIAPermissions>
-      <TIA.ReadOnly/>
+      <TIA.ReadWrite/>
     </TIAPermissions>
+
+    <SecurityPermissions>
+      <!-- Required for WPF Window/UserControl creation and display.
+           Without this, TIA Portal's sandbox blocks all WPF UI elements
+           (Window, UserControl) but still allows MessageBox (Win32 dialog).
+           Code path: AssistantPanelFactory.ShowWpfWindow() -->
+      <System.Security.Permissions.UIPermission />
+
+      <!-- Required for file-based logging to %LOCALAPPDATA%\TiaAgent\logs\.
+           Without this, AddInLogger must be a no-op and all diagnostics are lost.
+           Code path: AddInLogger.Log(), Directory.CreateDirectory, File.AppendAllText -->
+      <System.Security.Permissions.FileIOPermission />
+
+      <!-- Required for Environment.GetFolderPath() and environment variable access.
+           Without this, the static field initializer LogDir throws SecurityException
+           on first class access, causing TypeInitializationException that prevents
+           Add-In loading before any code in Startup() executes.
+           Code path: AddInLogger.GetLogDir(), Environment.OSVersion, Environment.Version -->
+      <System.Security.Permissions.EnvironmentPermission />
+
+      <!-- Required for WPF Window constructor (System.Windows.Window..ctor).
+           The Window constructor calls SecurityPermission.Demand(UnmanagedCode)
+           internally. Without this, new Window() throws SecurityException even
+           when UIPermission is granted.
+           Note: MessageBox (Win32 User32.dll) works without this because it does
+           not go through WPF's CAS demand chain.
+           Code path: new Window() in AssistantPanelFactory.TryShowWpfWindow() -->
+      <System.Security.Permissions.SecurityPermission.UnmanagedCode />
+    </SecurityPermissions>
   </RequiredPermissions>
 </PackageConfiguration>

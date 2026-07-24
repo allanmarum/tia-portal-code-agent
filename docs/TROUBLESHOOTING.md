@@ -168,7 +168,7 @@ netstat -ano | Select-String ":43119"
 |---|---|---|
 | Supervisor log | `%LOCALAPPDATA%\TiaAgent\logs\supervisor.log` | Startup, shutdown, health checks, errors |
 | Bridge log | `%LOCALAPPDATA%\TiaAgent\logs\bridge.log` | Task lifecycle, runtime calls, errors |
-| Add-In log | `%LOCALAPPDATA%\TiaAgent\addin.log` | Action triggers, Bridge client calls, results |
+| Add-In log | `%LOCALAPPDATA%\TiaAgent\logs\addin-YYYYMMDD.log` | UI lifecycle, WPF creation, permissions, assembly loads |
 
 View logs:
 
@@ -177,6 +177,47 @@ Get-Content "$env:LOCALAPPDATA\TiaAgent\logs\supervisor.log" -Tail 50
 Get-Content "$env:LOCALAPPDATA\TiaAgent\logs\bridge.log" -Tail 50
 Get-Content "$env:LOCALAPPDATA\TiaAgent\addin.log" -Tail 50
 ```
+
+## WPF UI issues
+
+### WPF window does not open (falls back to MessageBox)
+
+The Add-In attempts to create a WPF `Window` first, then falls back to `MessageBox` if it fails.
+
+**Diagnostic:**
+```powershell
+Get-Content "$env:LOCALAPPDATA\TiaAgent\logs\addin-$(Get-Date -Format yyyyMMdd).log" | Select-String "WPF"
+```
+
+Look for:
+- `Creating diagnostic WPF window.` — the attempt was made
+- `WPF window creation failed.` — the permission was denied or assemblies are missing
+- `Falling back to MessageBox` — WPF is unavailable, using Win32 fallback
+
+**Common causes:**
+1. **Missing `UIPermission`** in the `.addin` package — rebuild and reinstall:
+   ```powershell
+   ./build.ps1 pack-addin
+   ./build.ps1 install-dev
+   ```
+2. **TIA Portal cache** — close TIA Portal completely and reopen.
+3. **Old `.addin` version** — check installed file date vs generated artifact.
+
+### WPF window opens behind TIA Portal
+
+The diagnostic window uses `Topmost = true` and `WindowStartupLocation = CenterScreen` to prevent this. If the window still appears behind TIA Portal:
+
+1. Check the log for `Topmost` setting.
+2. Try Alt+Tab to find the window.
+3. Check if another application has captured focus.
+
+### Logging shows "WPF assembly not loaded"
+
+The Add-In logs all WPF assembly loads at startup. If `PresentationFramework`, `PresentationCore`, or `WindowsBase` fail to load:
+
+1. Ensure .NET Framework 4.8 is installed.
+2. Check for assembly version conflicts in the GAC.
+3. Verify the Add-In package contains the correct framework references.
 
 ## TIA Portal integration issues
 

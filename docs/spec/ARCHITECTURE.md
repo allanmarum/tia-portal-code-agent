@@ -212,6 +212,24 @@ Responsible for:
 - integrating application services into the TIA host;
 - conforming to the `.addin` package structure, `Config.xml` schema, and deployment model defined in `ADDIN_TECHNICAL_SPEC.md`.
 
+### 4.1.1 UI architecture
+
+The Add-In displays results to the user through `AssistantPanelFactory`, which implements a **try-WPF-first, MessageBox-fallback** pattern:
+
+1. **WPF Window (preferred)**: Creates a programmatic WPF `Window` with text content and a close button. Requires `UIPermission` in the `.addin` manifest.
+2. **MessageBox (fallback)**: If WPF window creation fails (permission denied, assemblies unavailable), falls back to `System.Windows.Forms.MessageBox` which works without `UIPermission`.
+
+The WPF window is created **programmatically** (no XAML dependency) to minimize failure points. The window is shown as a modal dialog via `ShowDialog()` on the TIA Portal UI thread.
+
+**Permissions required:**
+- `UIPermission` — for WPF Window creation
+- `FileIOPermission` — for file-based logging to `%LOCALAPPDATA%\TiaAgent\logs\`
+- `TIA.ReadWrite` — for selection capture and future write operations
+
+**Threading:** All UI calls are marshalled to the WPF dispatcher thread via `Application.Current.Dispatcher`. The `Task.Run()` calls for Bridge HTTP requests run on background threads and never create WPF controls.
+
+**Logging:** The full UI lifecycle is logged: menu trigger → WPF creation attempt → ShowDialog → close (or fallback to MessageBox). Logs go to `%LOCALAPPDATA%\TiaAgent\logs\addin-YYYYMMDD.log`.
+
 Not responsible for:
 
 - implementing the agent loop;
